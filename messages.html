@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rayo ⚡ - Mensajes</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="messages.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-top">
+                <div class="logo">
+                    <a href="index.html"><i data-lucide="zap" class="logo-icon"></i></a>
+                </div>
+                <nav class="nav-menu">
+                    <a href="index.html" class="nav-item"><i data-lucide="home"></i> <span
+                            class="nav-text">Inicio</span></a>
+                    <a href="#" class="nav-item"><i data-lucide="search"></i> <span class="nav-text">Explorar</span></a>
+                    <a href="index.html" class="nav-item position-relative">
+                        <i data-lucide="bell"></i>
+                        <span class="nav-text">Notificaciones</span>
+                        <span class="badge" id="notification-badge" style="display:none;">0</span>
+                    </a>
+                    <a href="messages.html" class="nav-item active"><i data-lucide="mail"></i> <span
+                            class="nav-text">Mensajes</span></a>
+                    <a href="index.html" class="nav-item" id="nav-profile"><i data-lucide="user"></i> <span
+                            class="nav-text">Perfil</span></a>
+                    <a href="#" class="nav-item" id="nav-logout"><i data-lucide="log-out"></i> <span
+                            class="nav-text">Salir</span></a>
+                </nav>
+                <button class="btn-publish-large" onclick="window.location.href='index.html'">Publicar</button>
+            </div>
+            <div class="sidebar-bottom">
+                <div class="user-profile-mini" id="user-profile-mini">
+                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="User Avatar"
+                        class="avatar-mini" id="sidebar-avatar">
+                    <div class="user-info-mini">
+                        <span class="user-name" id="sidebar-name">Usuario</span>
+                        <span class="user-handle" id="sidebar-handle">@usuario_rayo</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Messages Container -->
+        <main class="messages-container">
+            <!-- Conversations List -->
+            <div class="conversations-panel">
+                <div class="conversations-header">
+                    <h2>Mensajes</h2>
+                    <button class="btn-new-message" id="btn-new-message">
+                        <i data-lucide="edit"></i>
+                    </button>
+                </div>
+                <div class="conversations-search">
+                    <i data-lucide="search"></i>
+                    <input type="text" placeholder="Buscar mensajes directos" id="search-conversations">
+                </div>
+                <div class="conversations-list" id="conversations-list">
+                    <!-- Conversations will be loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Chat Panel -->
+            <div class="chat-panel" id="chat-panel">
+                <div class="chat-placeholder" id="chat-placeholder">
+                    <div class="placeholder-content">
+                        <h2>Selecciona un mensaje</h2>
+                        <p>Elige de tus conversaciones existentes, inicia una nueva o sigue explorando.</p>
+                        <button class="btn-primary btn-large" id="btn-start-conversation">Nuevo mensaje</button>
+                    </div>
+                </div>
+                <div class="chat-active" id="chat-active" style="display: none;">
+                    <div class="chat-header">
+                        <img src="" alt="" class="avatar-small" id="chat-user-avatar">
+                        <div class="chat-user-info">
+                            <span class="chat-user-name" id="chat-user-name"></span>
+                            <span class="chat-user-handle" id="chat-user-handle"></span>
+                        </div>
+                        <button class="btn-icon" id="btn-chat-info">
+                            <i data-lucide="info"></i>
+                        </button>
+                    </div>
+                    <div class="chat-messages" id="chat-messages">
+                        <!-- Messages will be loaded dynamically -->
+                    </div>
+                    <div class="chat-input-area">
+                        <button class="btn-icon">
+                            <i data-lucide="image"></i>
+                        </button>
+                        <div class="chat-input-wrapper">
+                            <input type="text" placeholder="Enviar un mensaje nuevo" id="message-input">
+                        </div>
+                        <button class="btn-icon btn-send" id="btn-send-message" disabled>
+                            <i data-lucide="send"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- New Message Modal -->
+    <div class="modal-overlay" id="new-message-modal">
+        <div class="modal-content modal-medium">
+            <div class="modal-header">
+                <button class="modal-close" id="modal-close"><i data-lucide="x"></i></button>
+                <span class="modal-title">Nuevo mensaje</span>
+            </div>
+            <div class="modal-body">
+                <div class="user-search">
+                    <i data-lucide="search"></i>
+                    <input type="text" placeholder="Buscar personas" id="search-users-input">
+                </div>
+                <div class="user-search-results" id="user-search-results">
+                    <!-- Users will be loaded dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="messages.js"></script>
+</body>
+
+</html>
