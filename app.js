@@ -50,12 +50,19 @@ async function initFirestore() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     // ==================== CHECK AUTH ====================
-    const demoMode = localStorage.getItem('rayo_demo_mode');
+    // We treat any logged-in user (Firebase) as valid
     const demoUser = JSON.parse(localStorage.getItem('rayo_demo_user') || 'null');
 
-    if (!demoMode || !demoUser) {
+    // Safety check - if no user, redirect to login
+    if (!demoUser || !demoUser.uid) {
+        console.warn('No user found, redirecting to login');
         window.location.href = 'login.html';
         return;
+    }
+
+    // Initialize icons immediately to avoid visual glitches
+    if (window.lucide) {
+        window.lucide.createIcons();
     }
 
     // ==================== INITIALIZE APP ====================
