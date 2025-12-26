@@ -22,7 +22,6 @@ import {
 } from "firebase/firestore";
 
 // Check if we're in Firebase mode
-// Check if we're in Firebase mode
 const isFirebaseMode = true;
 
 // ==================== SECURITY: HTML SANITIZATION ====================
@@ -127,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
             orderBy("lastMessageTime", "desc")
         );
 
-        unsubscribeConversations = onSnapshot(q, (snapshot) => {
+        unsubscribeConversations = onSnapshot(q, async (snapshot) => {
             const container = document.getElementById('conversations-list');
 
             if (snapshot.empty) {
@@ -141,16 +140,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             container.innerHTML = '';
+            const conversationPromises = [];
             snapshot.forEach(doc => {
                 const conversation = { id: doc.id, ...doc.data() };
-                container.appendChild(createFirestoreConversationElement(conversation));
+                conversationPromises.push(createFirestoreConversationElement(conversation));
             });
+
+            const conversationElements = await Promise.all(conversationPromises);
+            conversationElements.forEach(el => container.appendChild(el));
 
             lucide.createIcons();
         }, (error) => {
             console.error('Error subscribing to conversations:', error);
-            // Fallback to localStorage
-            loadConversations();
+            // Show error message to user
+            const container = document.getElementById('conversations-list');
+            container.innerHTML = `
+                <div class="no-conversations">
+                    <p>Error al cargar conversaciones</p>
+                    <p>Intenta recargar la página</p>
+                </div>
+            `;
         });
     }
 

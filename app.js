@@ -1,9 +1,6 @@
 // app.js - Rayo Social Network
-// Main application with localStorage persistence + Firestore for multi-user
-
-// Check if we're in Firebase mode
-// Check if we're in Firebase mode
 // Main application with Firestore for multi-user
+
 const isFirebaseMode = true;
 let firestoreService = null;
 let unsubscribePosts = null;
@@ -91,7 +88,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     updateNotificationBadge();
-    updateNotificationBadge();
     lucide.createIcons();
 
     // Check URL params for initial navigation
@@ -142,348 +138,337 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderPosts(posts);
         }, (error) => {
             console.error('Error subscribing to posts:', error);
-        }, (error) => {
-            console.error('Error subscribing to posts:', error);
-            // Fallback loadPosts() removed
         });
     }
 
+    // ==================== FIRESTORE OPERATIONS ====================
+
     async function createFirestorePost(content, imageUrl = null) {
-        async function createFirestorePost(content, imageUrl = null) {
-            // Fallback check removed
+        try {
+            const postData = {
+                authorId: currentUser.uid,
+                authorName: currentUser.displayName,
+                authorUsername: currentUser.username,
+                authorPhoto: currentUser.photoURL,
+                verified: false,
+                content: content,
+                imageUrl: imageUrl,
+                likes: [],
+                reposts: [],
+                comments: [],
+                views: Math.floor(Math.random() * 100) + 10,
+                createdAt: serverTimestamp()
+            };
 
-            try {
-                const postData = {
-                    authorId: currentUser.uid,
-                    authorName: currentUser.displayName,
-                    authorUsername: currentUser.username,
-                    authorPhoto: currentUser.photoURL,
-                    verified: false,
-                    content: content,
-                    imageUrl: imageUrl,
-                    likes: [],
-                    reposts: [],
-                    comments: [],
-                    views: Math.floor(Math.random() * 100) + 10,
-                    createdAt: serverTimestamp()
-                };
-
-                await addDoc(collection(db, "posts"), postData);
-                showToast('¡Publicación creada!');
-                // Real-time subscription will automatically update the UI
-            } catch (error) {
-                console.error('Error creating post:', error);
-                showToast('Error al publicar. Intenta de nuevo.');
-            }
+            await addDoc(collection(db, "posts"), postData);
+            showToast('¡Publicación creada!');
+            // Real-time subscription will automatically update the UI
+        } catch (error) {
+            console.error('Error creating post:', error);
+            showToast('Error al publicar. Intenta de nuevo.');
         }
+    }
 
-        async function toggleFirestoreLike(postId) {
-            // Fallback check removed using querySelector on app start
+    async function toggleFirestoreLike(postId) {
+        try {
+            const postRef = doc(db, "posts", postId);
+            const postSnap = await getDoc(postRef);
 
-            try {
-                const postRef = doc(db, "posts", postId);
-                const postSnap = await getDoc(postRef);
+            if (!postSnap.exists()) return false;
 
-                if (!postSnap.exists()) return false;
+            const postData = postSnap.data();
+            const likes = postData.likes || [];
+            const isLiked = likes.includes(currentUser.uid);
 
-                const postData = postSnap.data();
-                const likes = postData.likes || [];
-                const isLiked = likes.includes(currentUser.uid);
-
-                if (isLiked) {
-                    await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
-                } else {
-                    await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
-                }
-
-                return !isLiked;
-            } catch (error) {
-                console.error('Error toggling like:', error);
-                return false;
-            }
-        }
-
-        async function deleteFirestorePost(postId) {
-            // Fallback check removed
-
-            try {
-                const postRef = doc(db, "posts", postId);
-                const postSnap = await getDoc(postRef);
-
-                if (postSnap.exists() && postSnap.data().authorId === currentUser.uid) {
-                    await deleteDoc(postRef);
-                    showToast('Publicación eliminada');
-                    return true;
-                }
-                return false;
-            } catch (error) {
-                console.error('Error deleting post:', error);
-                return false;
-            }
-        }
-
-        async function addFirestoreComment(postId, content) {
-            // Fallback check removed
-
-            try {
-                const postRef = doc(db, "posts", postId);
-
-                const comment = {
-                    id: 'comment-' + Date.now(),
-                    authorId: currentUser.uid,
-                    authorName: currentUser.displayName,
-                    authorUsername: currentUser.username,
-                    authorPhoto: currentUser.photoURL,
-                    content: content,
-                    createdAt: Date.now()
-                };
-
-                await updateDoc(postRef, {
-                    comments: arrayUnion(comment)
-                });
-
-                return comment;
-            } catch (error) {
-                console.error('Error adding comment:', error);
-                return null;
-            }
-        }
-
-
-        // ==================== USER UI ====================
-        function updateUserUI(user) {
-            document.getElementById('sidebar-avatar').src = user.photoURL;
-            document.getElementById('sidebar-name').textContent = user.displayName;
-            document.getElementById('sidebar-handle').textContent = '@' + user.username;
-            document.getElementById('composer-avatar').src = user.photoURL;
-            document.getElementById('modal-avatar').src = user.photoURL;
-        }
-
-        // ==================== FOLLOWERS ====================
-        function getUsers() {
-            const defaultUsers = [
-                { uid: 'user-ana', displayName: 'Ana García', username: 'ana_dev', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ana', verified: true, verifiedColor: 'gold', bio: 'Frontend Developer 🚀', followers: ['user-carlos'], following: ['user-carlos', 'user-design'] },
-                { uid: 'user-carlos', displayName: 'Carlos Tech', username: 'carlostech', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos', verified: true, verifiedColor: 'blue', bio: 'Software Engineer | Clean Code Advocate', followers: ['user-ana'], following: ['user-ana'] },
-                { uid: 'user-design', displayName: 'Design Daily', username: 'designdaily', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Design', verified: false, bio: 'UI/UX Design Tips ✨', followers: ['user-ana'], following: [] },
-                { uid: 'user-david', displayName: 'David Dev', username: 'david_ui', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David', verified: false, bio: 'Building cool stuff', followers: [], following: [] }
-            ];
-
-            let users = JSON.parse(localStorage.getItem('rayo_users') || 'null');
-            if (!users) {
-                users = defaultUsers;
-                localStorage.setItem('rayo_users', JSON.stringify(users));
-            }
-            return users;
-        }
-
-        function saveUsers(users) {
-            localStorage.setItem('rayo_users', JSON.stringify(users));
-        }
-
-        function getUserById(userId) {
-            const users = getUsers();
-            return users.find(u => u.uid === userId);
-        }
-
-        function isFollowing(userId) {
-            const user = JSON.parse(localStorage.getItem('rayo_demo_user'));
-            return user.following && user.following.includes(userId);
-        }
-
-        function toggleFollow(userId) {
-            if (userId === currentUser.uid) return; // Can't follow yourself
-
-            const user = JSON.parse(localStorage.getItem('rayo_demo_user'));
-            if (!user.following) user.following = [];
-
-            const users = getUsers();
-            const targetUser = users.find(u => u.uid === userId);
-            if (!targetUser) return;
-            if (!targetUser.followers) targetUser.followers = [];
-
-            const isCurrentlyFollowing = user.following.includes(userId);
-
-            if (isCurrentlyFollowing) {
-                // Unfollow
-                user.following = user.following.filter(id => id !== userId);
-                targetUser.followers = targetUser.followers.filter(id => id !== currentUser.uid);
-                showToast('Dejaste de seguir a ' + targetUser.displayName);
+            if (isLiked) {
+                await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
             } else {
-                // Follow
-                user.following.push(userId);
-                targetUser.followers.push(currentUser.uid);
-                addNotification('follow', currentUser, null);
-                showToast('Ahora sigues a ' + targetUser.displayName);
+                await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
             }
 
-            // Update localStorage
-            localStorage.setItem('rayo_demo_user', JSON.stringify(user));
-            saveUsers(users);
-
-            // Update currentUser reference
-            currentUser.following = user.following;
-
-            return !isCurrentlyFollowing;
+            return !isLiked;
+        } catch (error) {
+            console.error('Error toggling like:', error);
+            return false;
         }
+    }
 
-        // ==================== NOTIFICATIONS ====================
-        function getNotifications() {
-            return JSON.parse(localStorage.getItem('rayo_notifications') || '[]');
+    async function deleteFirestorePost(postId) {
+        try {
+            const postRef = doc(db, "posts", postId);
+            const postSnap = await getDoc(postRef);
+
+            if (postSnap.exists() && postSnap.data().authorId === currentUser.uid) {
+                await deleteDoc(postRef);
+                showToast('Publicación eliminada');
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            return false;
         }
+    }
 
-        function saveNotifications(notifications) {
-            localStorage.setItem('rayo_notifications', JSON.stringify(notifications));
-        }
+    async function addFirestoreComment(postId, content) {
+        try {
+            const postRef = doc(db, "posts", postId);
 
-        function addNotification(type, fromUser, postId = null) {
-            const notifications = getNotifications();
-            const notification = {
-                id: 'notif-' + Date.now(),
-                type: type,
-                fromUserId: fromUser.uid || fromUser.authorId,
-                fromUserName: fromUser.displayName || fromUser.authorName,
-                fromUserPhoto: fromUser.photoURL || fromUser.authorPhoto,
-                fromUsername: fromUser.username || fromUser.authorUsername,
-                postId: postId,
-                read: false,
+            const comment = {
+                id: 'comment-' + Date.now(),
+                authorId: currentUser.uid,
+                authorName: currentUser.displayName,
+                authorUsername: currentUser.username,
+                authorPhoto: currentUser.photoURL,
+                content: content,
                 createdAt: Date.now()
             };
-            notifications.unshift(notification);
-            saveNotifications(notifications);
-            updateNotificationBadge();
+
+            await updateDoc(postRef, {
+                comments: arrayUnion(comment)
+            });
+
+            return comment;
+        } catch (error) {
+            console.error('Error adding comment:', error);
+            return null;
+        }
+    }
+
+    // ==================== USER UI ====================
+    function updateUserUI(user) {
+        document.getElementById('sidebar-avatar').src = user.photoURL;
+        document.getElementById('sidebar-name').textContent = user.displayName;
+        document.getElementById('sidebar-handle').textContent = '@' + user.username;
+        document.getElementById('composer-avatar').src = user.photoURL;
+        document.getElementById('modal-avatar').src = user.photoURL;
+    }
+
+    // ==================== FOLLOWERS ====================
+    function getUsers() {
+        const defaultUsers = [
+            { uid: 'user-ana', displayName: 'Ana García', username: 'ana_dev', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Ana', verified: true, verifiedColor: 'gold', bio: 'Frontend Developer 🚀', followers: ['user-carlos'], following: ['user-carlos', 'user-design'] },
+            { uid: 'user-carlos', displayName: 'Carlos Tech', username: 'carlostech', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos', verified: true, verifiedColor: 'blue', bio: 'Software Engineer | Clean Code Advocate', followers: ['user-ana'], following: ['user-ana'] },
+            { uid: 'user-design', displayName: 'Design Daily', username: 'designdaily', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Design', verified: false, bio: 'UI/UX Design Tips ✨', followers: ['user-ana'], following: [] },
+            { uid: 'user-david', displayName: 'David Dev', username: 'david_ui', photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David', verified: false, bio: 'Building cool stuff', followers: [], following: [] }
+        ];
+
+        let users = JSON.parse(localStorage.getItem('rayo_users') || 'null');
+        if (!users) {
+            users = defaultUsers;
+            localStorage.setItem('rayo_users', JSON.stringify(users));
+        }
+        return users;
+    }
+
+    function saveUsers(users) {
+        localStorage.setItem('rayo_users', JSON.stringify(users));
+    }
+
+    function getUserById(userId) {
+        const users = getUsers();
+        return users.find(u => u.uid === userId);
+    }
+
+    function isFollowing(userId) {
+        const user = JSON.parse(localStorage.getItem('rayo_demo_user'));
+        return user.following && user.following.includes(userId);
+    }
+
+    function toggleFollow(userId) {
+        if (userId === currentUser.uid) return; // Can't follow yourself
+
+        const user = JSON.parse(localStorage.getItem('rayo_demo_user'));
+        if (!user.following) user.following = [];
+
+        const users = getUsers();
+        const targetUser = users.find(u => u.uid === userId);
+        if (!targetUser) return;
+        if (!targetUser.followers) targetUser.followers = [];
+
+        const isCurrentlyFollowing = user.following.includes(userId);
+
+        if (isCurrentlyFollowing) {
+            // Unfollow
+            user.following = user.following.filter(id => id !== userId);
+            targetUser.followers = targetUser.followers.filter(id => id !== currentUser.uid);
+            showToast('Dejaste de seguir a ' + targetUser.displayName);
+        } else {
+            // Follow
+            user.following.push(userId);
+            targetUser.followers.push(currentUser.uid);
+            addNotification('follow', currentUser, null);
+            showToast('Ahora sigues a ' + targetUser.displayName);
         }
 
-        function updateNotificationBadge() {
-            const notifications = getNotifications();
-            const unreadCount = notifications.filter(n => !n.read).length;
-            const badge = document.getElementById('notification-badge');
-            if (unreadCount > 0) {
-                badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
-                badge.style.display = 'block';
-            } else {
-                badge.style.display = 'none';
-            }
+        // Update localStorage
+        localStorage.setItem('rayo_demo_user', JSON.stringify(user));
+        saveUsers(users);
+
+        // Update currentUser reference
+        currentUser.following = user.following;
+
+        return !isCurrentlyFollowing;
+    }
+
+    // ==================== NOTIFICATIONS ====================
+    function getNotifications() {
+        return JSON.parse(localStorage.getItem('rayo_notifications') || '[]');
+    }
+
+    function saveNotifications(notifications) {
+        localStorage.setItem('rayo_notifications', JSON.stringify(notifications));
+    }
+
+    function addNotification(type, fromUser, postId = null) {
+        const notifications = getNotifications();
+        const notification = {
+            id: 'notif-' + Date.now(),
+            type: type,
+            fromUserId: fromUser.uid || fromUser.authorId,
+            fromUserName: fromUser.displayName || fromUser.authorName,
+            fromUserPhoto: fromUser.photoURL || fromUser.authorPhoto,
+            fromUsername: fromUser.username || fromUser.authorUsername,
+            postId: postId,
+            read: false,
+            createdAt: Date.now()
+        };
+        notifications.unshift(notification);
+        saveNotifications(notifications);
+        updateNotificationBadge();
+    }
+
+    function updateNotificationBadge() {
+        const notifications = getNotifications();
+        const unreadCount = notifications.filter(n => !n.read).length;
+        const badge = document.getElementById('notification-badge');
+        if (unreadCount > 0) {
+            badge.textContent = unreadCount > 9 ? '9+' : unreadCount;
+            badge.style.display = 'block';
+        } else {
+            badge.style.display = 'none';
+        }
+    }
+
+    // ==================== POSTS STORAGE ====================
+
+
+    // ==================== IMAGE UPLOAD ====================
+    function handleImageUpload(file, previewContainer, removeCallback) {
+        if (!file || !file.type.startsWith('image/')) {
+            showToast('Por favor selecciona una imagen válida');
+            return;
         }
 
-        // ==================== POSTS STORAGE ====================
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+            showToast('La imagen es muy grande (máx 5MB)');
+            return;
+        }
 
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            pendingImageData = e.target.result;
 
-        // ==================== IMAGE UPLOAD ====================
-        function handleImageUpload(file, previewContainer, removeCallback) {
-            if (!file || !file.type.startsWith('image/')) {
-                showToast('Por favor selecciona una imagen válida');
-                return;
-            }
-
-            if (file.size > 5 * 1024 * 1024) { // 5MB limit
-                showToast('La imagen es muy grande (máx 5MB)');
-                return;
-            }
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                pendingImageData = e.target.result;
-
-                // Show preview
-                previewContainer.innerHTML = `
+            // Show preview
+            previewContainer.innerHTML = `
                 <div class="image-preview">
                     <img src="${pendingImageData}" alt="Preview">
                     <button class="remove-image-btn" type="button"><i data-lucide="x"></i></button>
                 </div>
             `;
-                previewContainer.style.display = 'block';
-                lucide.createIcons();
-
-                // Remove button handler
-                previewContainer.querySelector('.remove-image-btn').addEventListener('click', () => {
-                    pendingImageData = null;
-                    previewContainer.innerHTML = '';
-                    previewContainer.style.display = 'none';
-                    if (removeCallback) removeCallback();
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-
-        // ==================== RENDER POSTS ====================
-        // Core render function used by both localStorage and Firestore modes
-        function renderPosts(posts, filterUserId = null, filterFollowing = false) {
-            const container = document.getElementById('posts-container');
-            container.innerHTML = '';
-
-            let filteredPosts = [...posts];
-
-            if (filterUserId) {
-                filteredPosts = filteredPosts.filter(p => p.authorId === filterUserId);
-            }
-
-            if (filterFollowing) {
-                const user = JSON.parse(localStorage.getItem('rayo_demo_user'));
-                const following = user.following || [];
-                filteredPosts = filteredPosts.filter(p => following.includes(p.authorId) || p.authorId === currentUser.uid);
-            }
-
-            filteredPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-
-            if (filteredPosts.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>No hay publicaciones aún</p></div>';
-            } else {
-                filteredPosts.forEach(post => {
-                    container.appendChild(createPostElement(post));
-                });
-            }
-
+            previewContainer.style.display = 'block';
             lucide.createIcons();
+
+            // Remove button handler
+            previewContainer.querySelector('.remove-image-btn').addEventListener('click', () => {
+                pendingImageData = null;
+                previewContainer.innerHTML = '';
+                previewContainer.style.display = 'none';
+                if (removeCallback) removeCallback();
+            });
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // ==================== RENDER POSTS ====================
+    // Core render function used by both localStorage and Firestore modes
+    function renderPosts(posts, filterUserId = null, filterFollowing = false) {
+        const container = document.getElementById('posts-container');
+        container.innerHTML = '';
+
+        let filteredPosts = [...posts];
+
+        if (filterUserId) {
+            filteredPosts = filteredPosts.filter(p => p.authorId === filterUserId);
         }
 
-        // Render posts based on current data
-        function loadPosts(filterUserId = null, filterFollowing = false) {
-            const posts = isFirebaseMode ? currentFirestorePosts : getPosts();
-            renderPosts(posts, filterUserId, filterFollowing);
+        if (filterFollowing) {
+            const user = JSON.parse(localStorage.getItem('rayo_demo_user'));
+            const following = user.following || [];
+            filteredPosts = filteredPosts.filter(p => following.includes(p.authorId) || p.authorId === currentUser.uid);
         }
 
-        function createPostElement(post) {
-            const article = document.createElement('article');
-            article.className = 'post';
-            article.dataset.postId = post.id;
+        filteredPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-            const timeAgo = getTimeAgo(post.createdAt);
-            const isLiked = post.likes.includes(currentUser.uid);
-            const likeCount = post.likes.length;
-            const commentCount = Array.isArray(post.comments) ? post.comments.length : post.comments;
+        if (filteredPosts.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>No hay publicaciones aún</p></div>';
+        } else {
+            filteredPosts.forEach(post => {
+                container.appendChild(createPostElement(post));
+            });
+        }
 
-            // Sanitize user-generated content to prevent XSS
-            const safeName = sanitizeHTML(post.authorName);
-            const safeUsername = sanitizeHTML(post.authorUsername);
+        lucide.createIcons();
+    }
 
-            let verifiedIcon = '';
-            if (post.verified) {
-                const colorClass = post.verifiedColor === 'blue' ? 'blue' : '';
-                verifiedIcon = `<i data-lucide="check-circle" class="verified-icon ${colorClass}"></i>`;
-            }
+    // Render posts based on current data
+    function loadPosts(filterUserId = null, filterFollowing = false) {
+        const posts = isFirebaseMode ? currentFirestorePosts : getPosts();
+        renderPosts(posts, filterUserId, filterFollowing);
+    }
 
-            let mediaHtml = '';
-            if (post.imageUrl) {
-                // Sanitize image URL to prevent javascript: protocol attacks
-                const safeImageUrl = post.imageUrl.startsWith('data:image/') ||
-                    post.imageUrl.startsWith('https://') ||
-                    post.imageUrl.startsWith('http://')
-                    ? post.imageUrl : '';
-                if (safeImageUrl) {
-                    mediaHtml = `
+    function createPostElement(post) {
+        const article = document.createElement('article');
+        article.className = 'post';
+        article.dataset.postId = post.id;
+
+        const timeAgo = getTimeAgo(post.createdAt);
+        const isLiked = post.likes.includes(currentUser.uid);
+        const likeCount = post.likes.length;
+        const commentCount = Array.isArray(post.comments) ? post.comments.length : post.comments;
+
+        // Sanitize user-generated content to prevent XSS
+        const safeName = sanitizeHTML(post.authorName);
+        const safeUsername = sanitizeHTML(post.authorUsername);
+
+        let verifiedIcon = '';
+        if (post.verified) {
+            const colorClass = post.verifiedColor === 'blue' ? 'blue' : '';
+            verifiedIcon = `<i data-lucide="check-circle" class="verified-icon ${colorClass}"></i>`;
+        }
+
+        let mediaHtml = '';
+        if (post.imageUrl) {
+            // Sanitize image URL to prevent javascript: protocol attacks
+            const safeImageUrl = post.imageUrl.startsWith('data:image/') ||
+                post.imageUrl.startsWith('https://') ||
+                post.imageUrl.startsWith('http://')
+                ? post.imageUrl : '';
+            if (safeImageUrl) {
+                mediaHtml = `
                     <div class="post-media">
                         <img src="${safeImageUrl}" alt="Post image">
                     </div>
                 `;
-                }
             }
+        }
 
-            const isOwnPost = post.authorId === currentUser.uid;
-            const optionsHtml = isOwnPost ?
-                `<i data-lucide="trash-2" class="post-delete" data-post-id="${post.id}"></i>` :
-                `<i data-lucide="more-horizontal" class="post-options"></i>`;
+        const isOwnPost = post.authorId === currentUser.uid;
+        const optionsHtml = isOwnPost ?
+            `<i data-lucide="trash-2" class="post-delete" data-post-id="${post.id}"></i>` :
+            `<i data-lucide="more-horizontal" class="post-options"></i>`;
 
-            article.innerHTML = `
+        article.innerHTML = `
             <div class="post-layout">
                 <img src="${sanitizeHTML(post.authorPhoto)}" alt="${safeName}" class="avatar-small post-avatar" data-user-id="${post.authorId}">
                 <div class="post-body">
@@ -510,92 +495,92 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
         `;
 
-            return article;
+        return article;
+    }
+
+    // ==================== SECURITY: HTML SANITIZATION ====================
+    // Prevent XSS attacks by escaping HTML characters
+    function sanitizeHTML(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function formatContent(content) {
+        // First, sanitize to prevent XSS attacks
+        let sanitized = sanitizeHTML(content);
+
+        // Then apply formatting (safe because we sanitized first)
+        let formatted = sanitized.replace(/\n/g, '<br>');
+        formatted = formatted.replace(/#(\w+)/g, '<span class="hashtag">#$1</span>');
+        formatted = formatted.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
+        return formatted;
+    }
+
+    // Safe text for attributes (user names, etc)
+    function safeText(str) {
+        if (!str) return '';
+        return sanitizeHTML(str);
+    }
+
+    function getTimeAgo(timestamp) {
+        const seconds = Math.floor((Date.now() - timestamp) / 1000);
+        if (seconds < 60) return 'ahora';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
+        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
+        if (seconds < 604800) return Math.floor(seconds / 86400) + 'd';
+        const date = new Date(timestamp);
+        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    }
+
+    function formatNumber(num) {
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+        return num.toString();
+    }
+
+    // ==================== COMMENTS ====================
+    function openCommentModal(postId) {
+        selectedPostId = postId;
+        const post = currentFirestorePosts.find(p => p.id === postId); // Use global Firestore posts
+        if (!post) return;
+
+        const modal = document.getElementById('comment-modal-overlay');
+        const container = document.getElementById('comment-post-container');
+        const commentsContainer = document.getElementById('comments-container');
+
+        container.innerHTML = '';
+        container.appendChild(createPostElement(post));
+
+        commentsContainer.innerHTML = '';
+        const comments = Array.isArray(post.comments) ? post.comments : [];
+
+        if (comments.length === 0) {
+            commentsContainer.innerHTML = '<div class="no-comments">Sé el primero en comentar</div>';
+        } else {
+            comments.forEach(comment => {
+                commentsContainer.appendChild(createCommentElement(comment));
+            });
         }
 
-        // ==================== SECURITY: HTML SANITIZATION ====================
-        // Prevent XSS attacks by escaping HTML characters
-        function sanitizeHTML(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
+        modal.classList.add('active');
+        lucide.createIcons();
 
-        function formatContent(content) {
-            // First, sanitize to prevent XSS attacks
-            let sanitized = sanitizeHTML(content);
+        setTimeout(() => document.getElementById('comment-textarea').focus(), 100);
+    }
 
-            // Then apply formatting (safe because we sanitized first)
-            let formatted = sanitized.replace(/\n/g, '<br>');
-            formatted = formatted.replace(/#(\w+)/g, '<span class="hashtag">#$1</span>');
-            formatted = formatted.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
-            return formatted;
-        }
+    function createCommentElement(comment) {
+        const div = document.createElement('div');
+        div.className = 'comment';
 
-        // Safe text for attributes (user names, etc)
-        function safeText(str) {
-            if (!str) return '';
-            return sanitizeHTML(str);
-        }
+        // Sanitize user-generated content to prevent XSS
+        const safeName = sanitizeHTML(comment.authorName);
+        const safeUsername = sanitizeHTML(comment.authorUsername);
+        const safeContent = sanitizeHTML(comment.content);
+        const safePhoto = sanitizeHTML(comment.authorPhoto);
 
-        function getTimeAgo(timestamp) {
-            const seconds = Math.floor((Date.now() - timestamp) / 1000);
-            if (seconds < 60) return 'ahora';
-            if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
-            if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
-            if (seconds < 604800) return Math.floor(seconds / 86400) + 'd';
-            const date = new Date(timestamp);
-            return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-        }
-
-        function formatNumber(num) {
-            if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-            if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-            return num.toString();
-        }
-
-        // ==================== COMMENTS ====================
-        function openCommentModal(postId) {
-            selectedPostId = postId;
-            const post = currentFirestorePosts.find(p => p.id === postId); // Use global Firestore posts
-            if (!post) return;
-
-            const modal = document.getElementById('comment-modal-overlay');
-            const container = document.getElementById('comment-post-container');
-            const commentsContainer = document.getElementById('comments-container');
-
-            container.innerHTML = '';
-            container.appendChild(createPostElement(post));
-
-            commentsContainer.innerHTML = '';
-            const comments = Array.isArray(post.comments) ? post.comments : [];
-
-            if (comments.length === 0) {
-                commentsContainer.innerHTML = '<div class="no-comments">Sé el primero en comentar</div>';
-            } else {
-                comments.forEach(comment => {
-                    commentsContainer.appendChild(createCommentElement(comment));
-                });
-            }
-
-            modal.classList.add('active');
-            lucide.createIcons();
-
-            setTimeout(() => document.getElementById('comment-textarea').focus(), 100);
-        }
-
-        function createCommentElement(comment) {
-            const div = document.createElement('div');
-            div.className = 'comment';
-
-            // Sanitize user-generated content to prevent XSS
-            const safeName = sanitizeHTML(comment.authorName);
-            const safeUsername = sanitizeHTML(comment.authorUsername);
-            const safeContent = sanitizeHTML(comment.content);
-            const safePhoto = sanitizeHTML(comment.authorPhoto);
-
-            div.innerHTML = `
+        div.innerHTML = `
             <img src="${safePhoto}" alt="${safeName}" class="avatar-tiny">
             <div class="comment-body">
                 <div class="comment-header">
@@ -606,85 +591,85 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="comment-content">${safeContent}</div>
             </div>
         `;
-            return div;
+        return div;
+    }
+
+    function closeCommentModal() {
+        document.getElementById('comment-modal-overlay').classList.remove('active');
+        document.getElementById('comment-textarea').value = '';
+        document.getElementById('comment-post-btn').disabled = true;
+        selectedPostId = null;
+    }
+
+    async function addComment(content) {
+        if (!selectedPostId || !content.trim()) return;
+
+        // Use Firestore always
+        const comment = await addFirestoreComment(selectedPostId, content.trim());
+        if (comment) {
+            // Refresh the comment modal to show the new comment
+            setTimeout(() => {
+                openCommentModal(selectedPostId);
+            }, 500);
         }
 
-        function closeCommentModal() {
-            document.getElementById('comment-modal-overlay').classList.remove('active');
-            document.getElementById('comment-textarea').value = '';
-            document.getElementById('comment-post-btn').disabled = true;
-            selectedPostId = null;
-        }
+        document.getElementById('comment-textarea').value = '';
+        document.getElementById('comment-post-btn').disabled = true;
+    }
 
-        async function addComment(content) {
-            if (!selectedPostId || !content.trim()) return;
+    // ==================== PROFILE ====================
+    async function showProfile(userId) {
+        currentView = 'profile';
+        const container = document.getElementById('posts-container');
 
-            // Use Firestore always
-            const comment = await addFirestoreComment(selectedPostId, content.trim());
-            if (comment) {
-                // Refresh the comment modal to show the new comment
-                setTimeout(() => {
-                    openCommentModal(selectedPostId);
-                }, 500);
+        // Show loading state
+        container.innerHTML = '<div class="loading-spinner"><i data-lucide="loader-2" class="animate-spin"></i></div>';
+        lucide.createIcons();
+
+        try {
+            // 1. Fetch User Data
+            const userRef = doc(db, "users", userId);
+            const userSnap = await getDoc(userRef);
+
+            let userInfo;
+            if (!userSnap.exists()) {
+                // Try to see if it's the current user but doc is missing (shouldn't happen but fallback)
+                if (userId === currentUser.uid) {
+                    userInfo = { ...currentUser }; // Fallback to auth object
+                } else {
+                    container.innerHTML = '<div class="error-message">Usuario no encontrado</div>';
+                    return;
+                }
+            } else {
+                userInfo = userSnap.data();
+                userInfo.uid = userId;
             }
 
-            document.getElementById('comment-textarea').value = '';
-            document.getElementById('comment-post-btn').disabled = true;
-        }
+            // Ensure defaults
+            userInfo = {
+                uid: userId,
+                displayName: userInfo.displayName || 'Usuario',
+                username: userInfo.username || 'usuario',
+                photoURL: userInfo.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userId,
+                verified: userInfo.verified || false,
+                verifiedColor: userInfo.verifiedColor || 'blue',
+                bio: userInfo.bio || '⚡ Usuario de Rayo',
+                followers: userInfo.followers || [],
+                following: userInfo.following || []
+            };
 
-        // ==================== PROFILE ====================
-        async function showProfile(userId) {
-            currentView = 'profile';
-            const container = document.getElementById('posts-container');
+            // 2. Fetch User Posts
+            const postsRef = collection(db, "posts");
+            const q = query(postsRef, where("authorId", "==", userId), orderBy("createdAt", "desc"));
+            const querySnapshot = await getDocs(q);
+            const userPosts = [];
+            querySnapshot.forEach((doc) => {
+                userPosts.push({ id: doc.id, ...doc.data() });
+            });
 
-            // Show loading state
-            container.innerHTML = '<div class="loading-spinner"><i data-lucide="loader-2" class="animate-spin"></i></div>';
-            lucide.createIcons();
-
-            try {
-                // 1. Fetch User Data
-                const userRef = doc(db, "users", userId);
-                const userSnap = await getDoc(userRef);
-
-                let userInfo;
-                if (!userSnap.exists()) {
-                    // Try to see if it's the current user but doc is missing (shouldn't happen but fallback)
-                    if (userId === currentUser.uid) {
-                        userInfo = { ...currentUser }; // Fallback to auth object
-                    } else {
-                        container.innerHTML = '<div class="error-message">Usuario no encontrado</div>';
-                        return;
-                    }
-                } else {
-                    userInfo = userSnap.data();
-                    userInfo.uid = userId;
-                }
-
-                // Ensure defaults
-                userInfo = {
-                    uid: userId,
-                    displayName: userInfo.displayName || 'Usuario',
-                    username: userInfo.username || 'usuario',
-                    photoURL: userInfo.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userId,
-                    verified: userInfo.verified || false,
-                    verifiedColor: userInfo.verifiedColor || 'blue',
-                    bio: userInfo.bio || '⚡ Usuario de Rayo',
-                    followers: userInfo.followers || [],
-                    following: userInfo.following || []
-                };
-
-                // 2. Fetch User Posts
-                const postsRef = collection(db, "posts");
-                const q = query(postsRef, where("authorId", "==", userId), orderBy("createdAt", "desc"));
-                const querySnapshot = await getDocs(q);
-                const userPosts = [];
-                querySnapshot.forEach((doc) => {
-                    userPosts.push({ id: doc.id, ...doc.data() });
-                });
-
-                // 3. Render Profile Header
-                const header = document.querySelector('.feed-header');
-                header.innerHTML = `
+            // 3. Render Profile Header
+            const header = document.querySelector('.feed-header');
+            header.innerHTML = `
                     <div class="profile-header-back">
                         <button class="btn-back" id="btn-back"><i data-lucide="arrow-left"></i></button>
                         <div class="profile-header-info">
@@ -694,37 +679,37 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 `;
 
-                // Verified Icon
-                let verifiedIcon = '';
-                if (userInfo.verified) {
-                    const colorClass = userInfo.verifiedColor === 'blue' ? 'blue' : '';
-                    verifiedIcon = `<i data-lucide="check-circle" class="verified-icon ${colorClass}"></i>`;
+            // Verified Icon
+            let verifiedIcon = '';
+            if (userInfo.verified) {
+                const colorClass = userInfo.verifiedColor === 'blue' ? 'blue' : '';
+                verifiedIcon = `<i data-lucide="check-circle" class="verified-icon ${colorClass}"></i>`;
+            }
+
+            // Check Follow Status using current User state or derived from following array
+            let isFollowingUser = false;
+            if (currentUser && currentUser.uid !== userId) {
+                // We check if the target user's ID is in our following list
+                // OR we can check if our ID is in their followers list (if we fetched that). 
+                // But typically 'am I following them' is in 'my' doc.
+
+                // Assuming currentUser global object is kept updated or we should fetch it.
+                // For now, let's assume currentUser has 'following' array.
+                if (currentUser.following && Array.isArray(currentUser.following)) {
+                    isFollowingUser = currentUser.following.includes(userId);
                 }
+            }
 
-                // Check Follow Status using current User state or derived from following array
-                let isFollowingUser = false;
-                if (currentUser && currentUser.uid !== userId) {
-                    // We check if the target user's ID is in our following list
-                    // OR we can check if our ID is in their followers list (if we fetched that). 
-                    // But typically 'am I following them' is in 'my' doc.
+            const isOwnProfile = currentUser && userId === currentUser.uid;
 
-                    // Assuming currentUser global object is kept updated or we should fetch it.
-                    // For now, let's assume currentUser has 'following' array.
-                    if (currentUser.following && Array.isArray(currentUser.following)) {
-                        isFollowingUser = currentUser.following.includes(userId);
-                    }
-                }
+            const actionBtn = isOwnProfile ?
+                '<button class="btn-edit-profile">Editar perfil</button>' :
+                `<button class="btn-follow-profile ${isFollowingUser ? 'following' : ''}" data-user-id="${userId}">${isFollowingUser ? 'Siguiendo' : 'Seguir'}</button>`;
 
-                const isOwnProfile = currentUser && userId === currentUser.uid;
+            const followersCount = userInfo.followers.length;
+            const followingCount = userInfo.following.length;
 
-                const actionBtn = isOwnProfile ?
-                    '<button class="btn-edit-profile">Editar perfil</button>' :
-                    `<button class="btn-follow-profile ${isFollowingUser ? 'following' : ''}" data-user-id="${userId}">${isFollowingUser ? 'Siguiendo' : 'Seguir'}</button>`;
-
-                const followersCount = userInfo.followers.length;
-                const followingCount = userInfo.following.length;
-
-                container.innerHTML = `
+            container.innerHTML = `
                     <div class="profile-card">
                         <div class="profile-banner"></div>
                         <div class="profile-info">
@@ -749,84 +734,84 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div id="profile-posts-container"></div>
                 `;
 
-                const profilePostsContainer = document.getElementById('profile-posts-container');
+            const profilePostsContainer = document.getElementById('profile-posts-container');
 
-                if (userPosts.length === 0) {
-                    profilePostsContainer.innerHTML = '<div class="empty-state"><p>Este usuario no tiene publicaciones</p></div>';
-                } else {
-                    userPosts.forEach(post => {
-                        profilePostsContainer.appendChild(createPostElement(post));
-                    });
-                }
-
-                lucide.createIcons();
-
-                // Event Listeners
-                document.getElementById('btn-back').addEventListener('click', () => {
-                    showFeed();
+            if (userPosts.length === 0) {
+                profilePostsContainer.innerHTML = '<div class="empty-state"><p>Este usuario no tiene publicaciones</p></div>';
+            } else {
+                userPosts.forEach(post => {
+                    profilePostsContainer.appendChild(createPostElement(post));
                 });
-
-                // Follow Button Logic
-                const followBtn = container.querySelector('.btn-follow-profile');
-                if (followBtn) {
-                    followBtn.addEventListener('click', async () => {
-                        if (!currentUser) return;
-
-                        const isNowFollowing = !followBtn.classList.contains('following');
-                        // Optimistic UI
-                        followBtn.textContent = isNowFollowing ? 'Siguiendo' : 'Seguir';
-                        followBtn.classList.toggle('following', isNowFollowing);
-
-                        // Update stats visually
-                        const statsSpans = container.querySelectorAll('.profile-stats span');
-                        if (statsSpans[1]) {
-                            // Assuming 2nd span is Followers
-                            let currentCount = parseInt(statsSpans[1].querySelector('strong').textContent);
-                            statsSpans[1].innerHTML = `<strong>${isNowFollowing ? currentCount + 1 : currentCount - 1}</strong> Seguidores`;
-                        }
-
-                        // Update Firestore
-                        try {
-                            const myRef = doc(db, "users", currentUser.uid);
-                            const targetRef = doc(db, "users", userId);
-
-                            if (isNowFollowing) {
-                                await updateDoc(myRef, { following: arrayUnion(userId) });
-                                await updateDoc(targetRef, { followers: arrayUnion(currentUser.uid) });
-                                if (currentUser.following) currentUser.following.push(userId);
-                            } else {
-                                await updateDoc(myRef, { following: arrayRemove(userId) });
-                                await updateDoc(targetRef, { followers: arrayRemove(currentUser.uid) });
-                                if (currentUser.following) {
-                                    currentUser.following = currentUser.following.filter(id => id !== userId);
-                                }
-                            }
-                        } catch (err) {
-                            console.error("Error updating follow status:", err);
-                        }
-                    });
-                }
-
-                // Edit Profile Button (Placeholder)
-                const editBtn = container.querySelector('.btn-edit-profile');
-                if (editBtn) {
-                    editBtn.addEventListener('click', () => {
-                        alert("Editar perfil próximamente");
-                    });
-                }
-
-            } catch (error) {
-                console.error("Error in showProfile:", error);
-
-                // Fallback for demo/dev if needed, but we want to stick to Firestore
-                container.innerHTML = `<div class="error-message">Error al cargar perfil: ${error.message}</div>`;
             }
-        }
 
-        function showFeed() {
-            currentView = 'feed';
-            const header = document.querySelector('.feed-header');
-            header.innerHTML = `
+            lucide.createIcons();
+
+            // Event Listeners
+            document.getElementById('btn-back').addEventListener('click', () => {
+                showFeed();
+            });
+
+            // Follow Button Logic
+            const followBtn = container.querySelector('.btn-follow-profile');
+            if (followBtn) {
+                followBtn.addEventListener('click', async () => {
+                    if (!currentUser) return;
+
+                    const isNowFollowing = !followBtn.classList.contains('following');
+                    // Optimistic UI
+                    followBtn.textContent = isNowFollowing ? 'Siguiendo' : 'Seguir';
+                    followBtn.classList.toggle('following', isNowFollowing);
+
+                    // Update stats visually
+                    const statsSpans = container.querySelectorAll('.profile-stats span');
+                    if (statsSpans[1]) {
+                        // Assuming 2nd span is Followers
+                        let currentCount = parseInt(statsSpans[1].querySelector('strong').textContent);
+                        statsSpans[1].innerHTML = `<strong>${isNowFollowing ? currentCount + 1 : currentCount - 1}</strong> Seguidores`;
+                    }
+
+                    // Update Firestore
+                    try {
+                        const myRef = doc(db, "users", currentUser.uid);
+                        const targetRef = doc(db, "users", userId);
+
+                        if (isNowFollowing) {
+                            await updateDoc(myRef, { following: arrayUnion(userId) });
+                            await updateDoc(targetRef, { followers: arrayUnion(currentUser.uid) });
+                            if (currentUser.following) currentUser.following.push(userId);
+                        } else {
+                            await updateDoc(myRef, { following: arrayRemove(userId) });
+                            await updateDoc(targetRef, { followers: arrayRemove(currentUser.uid) });
+                            if (currentUser.following) {
+                                currentUser.following = currentUser.following.filter(id => id !== userId);
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Error updating follow status:", err);
+                    }
+                });
+            }
+
+            // Edit Profile Button (Placeholder)
+            const editBtn = container.querySelector('.btn-edit-profile');
+            if (editBtn) {
+                editBtn.addEventListener('click', () => {
+                    alert("Editar perfil próximamente");
+                });
+            }
+
+        } catch (error) {
+            console.error("Error in showProfile:", error);
+
+            // Fallback for demo/dev if needed, but we want to stick to Firestore
+            container.innerHTML = `<div class="error-message">Error al cargar perfil: ${error.message}</div>`;
+        }
+    }
+
+    function showFeed() {
+        currentView = 'feed';
+        const header = document.querySelector('.feed-header');
+        header.innerHTML = `
             <div class="feed-tabs">
                 <div class="tab active" data-tab="para-ti">Para ti</div>
                 <div class="tab" data-tab="siguiendo">Siguiendo</div>
@@ -836,31 +821,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
         `;
 
-            const tabs = header.querySelectorAll('.tab');
-            tabs.forEach(tab => {
-                tab.addEventListener('click', () => {
-                    tabs.forEach(t => t.classList.remove('active'));
-                    tab.classList.add('active');
+        const tabs = header.querySelectorAll('.tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
 
-                    if (tab.dataset.tab === 'siguiendo') {
-                        loadPosts(null, true); // Filter by following
-                    } else {
-                        loadPosts(); // Show all
-                    }
-                });
+                if (tab.dataset.tab === 'siguiendo') {
+                    loadPosts(null, true); // Filter by following
+                } else {
+                    loadPosts(); // Show all
+                }
             });
+        });
 
-            loadPosts();
-            lucide.createIcons();
-        }
+        loadPosts();
+        lucide.createIcons();
+    }
 
-        // ==================== NOTIFICATIONS VIEW ====================
-        function showNotifications() {
-            currentView = 'notifications';
-            const container = document.getElementById('posts-container');
-            const header = document.querySelector('.feed-header');
+    // ==================== NOTIFICATIONS VIEW ====================
+    function showNotifications() {
+        currentView = 'notifications';
+        const container = document.getElementById('posts-container');
+        const header = document.querySelector('.feed-header');
 
-            header.innerHTML = `
+        header.innerHTML = `
             <div class="profile-header-back">
                 <button class="btn-back" id="btn-back"><i data-lucide="arrow-left"></i></button>
                 <div class="profile-header-info">
@@ -869,52 +854,52 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
         `;
 
-            const notifications = getNotifications();
+        const notifications = getNotifications();
 
-            if (notifications.length === 0) {
-                container.innerHTML = '<div class="empty-state"><p>No tienes notificaciones</p></div>';
-            } else {
-                container.innerHTML = '';
-                notifications.forEach(notif => {
-                    container.appendChild(createNotificationElement(notif));
-                });
-            }
-
-            notifications.forEach(n => n.read = true);
-            saveNotifications(notifications);
-            updateNotificationBadge();
-
-            lucide.createIcons();
-
-            document.getElementById('btn-back').addEventListener('click', () => {
-                showFeed();
+        if (notifications.length === 0) {
+            container.innerHTML = '<div class="empty-state"><p>No tienes notificaciones</p></div>';
+        } else {
+            container.innerHTML = '';
+            notifications.forEach(notif => {
+                container.appendChild(createNotificationElement(notif));
             });
         }
 
-        function createNotificationElement(notif) {
-            const div = document.createElement('div');
-            div.className = `notification-item ${notif.read ? '' : 'unread'}`;
+        notifications.forEach(n => n.read = true);
+        saveNotifications(notifications);
+        updateNotificationBadge();
 
-            let icon, text;
-            switch (notif.type) {
-                case 'like':
-                    icon = '<i data-lucide="heart" class="notif-icon like"></i>';
-                    text = 'le gustó tu publicación';
-                    break;
-                case 'comment':
-                    icon = '<i data-lucide="message-circle" class="notif-icon comment"></i>';
-                    text = 'comentó en tu publicación';
-                    break;
-                case 'follow':
-                    icon = '<i data-lucide="user-plus" class="notif-icon follow"></i>';
-                    text = 'te empezó a seguir';
-                    break;
-                default:
-                    icon = '<i data-lucide="bell" class="notif-icon"></i>';
-                    text = 'interactuó contigo';
-            }
+        lucide.createIcons();
 
-            div.innerHTML = `
+        document.getElementById('btn-back').addEventListener('click', () => {
+            showFeed();
+        });
+    }
+
+    function createNotificationElement(notif) {
+        const div = document.createElement('div');
+        div.className = `notification-item ${notif.read ? '' : 'unread'}`;
+
+        let icon, text;
+        switch (notif.type) {
+            case 'like':
+                icon = '<i data-lucide="heart" class="notif-icon like"></i>';
+                text = 'le gustó tu publicación';
+                break;
+            case 'comment':
+                icon = '<i data-lucide="message-circle" class="notif-icon comment"></i>';
+                text = 'comentó en tu publicación';
+                break;
+            case 'follow':
+                icon = '<i data-lucide="user-plus" class="notif-icon follow"></i>';
+                text = 'te empezó a seguir';
+                break;
+            default:
+                icon = '<i data-lucide="bell" class="notif-icon"></i>';
+                text = 'interactuó contigo';
+        }
+
+        div.innerHTML = `
             ${icon}
             <img src="${notif.fromUserPhoto}" alt="${notif.fromUserName}" class="avatar-small">
             <div class="notification-content">
@@ -924,170 +909,169 @@ document.addEventListener('DOMContentLoaded', async () => {
             </div>
         `;
 
-            return div;
-        }
+        return div;
+    }
 
-        // ==================== EVENT LISTENERS ====================
+    // ==================== EVENT LISTENERS ====================
 
-        // Tab switching (initial)
-        const tabs = document.querySelectorAll('.tab');
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
+    // Tab switching (initial)
+    const tabs = document.querySelectorAll('.tab');
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
 
-                if (tab.dataset.tab === 'siguiendo') {
-                    loadPosts(null, true);
-                } else {
-                    loadPosts();
+            if (tab.dataset.tab === 'siguiendo') {
+                loadPosts(null, true);
+            } else {
+                loadPosts();
+            }
+        });
+    });
+
+    // Composer textarea
+    const textarea = document.getElementById('post-textarea');
+    const btnPost = document.getElementById('btn-post');
+
+    textarea.addEventListener('input', () => {
+        btnPost.disabled = textarea.value.trim().length === 0 && !pendingImageData;
+        textarea.style.height = 'auto';
+        textarea.style.height = textarea.scrollHeight + 'px';
+    });
+
+    // Image upload button in composer
+    const composerImageBtn = document.querySelector('.composer .action-icons i[data-lucide="image"]');
+    if (composerImageBtn) {
+        composerImageBtn.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                let previewContainer = document.querySelector('.composer .image-preview-container');
+                if (!previewContainer) {
+                    previewContainer = document.createElement('div');
+                    previewContainer.className = 'image-preview-container';
+                    document.querySelector('.composer-content').insertBefore(previewContainer, document.querySelector('.composer-actions'));
                 }
-            });
+                handleImageUpload(file, previewContainer, () => {
+                    btnPost.disabled = textarea.value.trim().length === 0;
+                });
+                btnPost.disabled = false;
+            };
+            input.click();
         });
+    }
 
-        // Composer textarea
-        const textarea = document.getElementById('post-textarea');
-        const btnPost = document.getElementById('btn-post');
+    btnPost.addEventListener('click', () => {
+        // Use Firestore always
+        createFirestorePost(textarea.value.trim(), pendingImageData);
+        textarea.value = '';
+        textarea.style.height = 'auto';
+        btnPost.disabled = true;
+        pendingImageData = null;
+        const previewContainer = document.querySelector('.composer .image-preview-container');
+        if (previewContainer) {
+            previewContainer.innerHTML = '';
+            previewContainer.style.display = 'none';
+        }
+    });
 
-        textarea.addEventListener('input', () => {
-            btnPost.disabled = textarea.value.trim().length === 0 && !pendingImageData;
-            textarea.style.height = 'auto';
-            textarea.style.height = textarea.scrollHeight + 'px';
+    // Modal
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalTextarea = document.getElementById('modal-textarea');
+    const modalPostBtn = document.getElementById('modal-post-btn');
+    const modalClose = document.getElementById('modal-close');
+    const btnPublishModal = document.getElementById('btn-publish-modal');
+    const btnPublishFab = document.getElementById('btn-publish-fab');
+
+    function openModal() {
+        modalOverlay.classList.add('active');
+        pendingImageData = null;
+        setTimeout(() => modalTextarea.focus(), 100);
+    }
+
+    function closeModal() {
+        modalOverlay.classList.remove('active');
+        modalTextarea.value = '';
+        modalPostBtn.disabled = true;
+        pendingImageData = null;
+        const previewContainer = document.querySelector('.modal-body .image-preview-container');
+        if (previewContainer) {
+            previewContainer.innerHTML = '';
+            previewContainer.style.display = 'none';
+        }
+    }
+
+    btnPublishModal.addEventListener('click', openModal);
+    btnPublishFab.addEventListener('click', openModal);
+    modalClose.addEventListener('click', closeModal);
+    modalOverlay.addEventListener('click', (e) => {
+        if (e.target === modalOverlay) closeModal();
+    });
+
+    modalTextarea.addEventListener('input', () => {
+        modalPostBtn.disabled = modalTextarea.value.trim().length === 0 && !pendingImageData;
+        modalTextarea.style.height = 'auto';
+        modalTextarea.style.height = modalTextarea.scrollHeight + 'px';
+    });
+
+    // Image upload in modal
+    const modalImageBtn = document.querySelector('.modal-body .action-icons i[data-lucide="image"]');
+    if (modalImageBtn) {
+        modalImageBtn.addEventListener('click', () => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = (e) => {
+                const file = e.target.files[0];
+                let previewContainer = document.querySelector('.modal-body .image-preview-container');
+                if (!previewContainer) {
+                    previewContainer = document.createElement('div');
+                    previewContainer.className = 'image-preview-container';
+                    document.querySelector('.modal-body .composer-content').insertBefore(previewContainer, document.querySelector('.modal-body .composer-actions'));
+                }
+                handleImageUpload(file, previewContainer, () => {
+                    modalPostBtn.disabled = modalTextarea.value.trim().length === 0;
+                });
+                modalPostBtn.disabled = false;
+            };
+            input.click();
         });
+    }
 
-        // Image upload button in composer
-        const composerImageBtn = document.querySelector('.composer .action-icons i[data-lucide="image"]');
-        if (composerImageBtn) {
-            composerImageBtn.addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    let previewContainer = document.querySelector('.composer .image-preview-container');
-                    if (!previewContainer) {
-                        previewContainer = document.createElement('div');
-                        previewContainer.className = 'image-preview-container';
-                        document.querySelector('.composer-content').insertBefore(previewContainer, document.querySelector('.composer-actions'));
-                    }
-                    handleImageUpload(file, previewContainer, () => {
-                        btnPost.disabled = textarea.value.trim().length === 0;
-                    });
-                    btnPost.disabled = false;
-                };
-                input.click();
-            });
-        }
+    modalPostBtn.addEventListener('click', () => {
+        // Use Firestore always
+        createFirestorePost(modalTextarea.value.trim(), pendingImageData);
+        closeModal();
+    });
 
-        btnPost.addEventListener('click', () => {
-            // Use Firestore always
-            createFirestorePost(textarea.value.trim(), pendingImageData);
-            textarea.value = '';
-            textarea.style.height = 'auto';
-            btnPost.disabled = true;
-            pendingImageData = null;
-            const previewContainer = document.querySelector('.composer .image-preview-container');
-            if (previewContainer) {
-                previewContainer.innerHTML = '';
-                previewContainer.style.display = 'none';
-            }
+    // Comment modal
+    const commentModalOverlay = document.getElementById('comment-modal-overlay');
+    const commentTextarea = document.getElementById('comment-textarea');
+    const commentPostBtn = document.getElementById('comment-post-btn');
+    const commentModalClose = document.getElementById('comment-modal-close');
+
+    if (commentModalClose) {
+        commentModalClose.addEventListener('click', closeCommentModal);
+    }
+
+    if (commentModalOverlay) {
+        commentModalOverlay.addEventListener('click', (e) => {
+            if (e.target === commentModalOverlay) closeCommentModal();
         });
+    }
 
-        // Modal
-        const modalOverlay = document.getElementById('modal-overlay');
-        const modalTextarea = document.getElementById('modal-textarea');
-        const modalPostBtn = document.getElementById('modal-post-btn');
-        const modalClose = document.getElementById('modal-close');
-        const btnPublishModal = document.getElementById('btn-publish-modal');
-        const btnPublishFab = document.getElementById('btn-publish-fab');
-
-        function openModal() {
-            modalOverlay.classList.add('active');
-            pendingImageData = null;
-            setTimeout(() => modalTextarea.focus(), 100);
-        }
-
-        function closeModal() {
-            modalOverlay.classList.remove('active');
-            modalTextarea.value = '';
-            modalPostBtn.disabled = true;
-            pendingImageData = null;
-            const previewContainer = document.querySelector('.modal-body .image-preview-container');
-            if (previewContainer) {
-                previewContainer.innerHTML = '';
-                previewContainer.style.display = 'none';
-            }
-        }
-
-        btnPublishModal.addEventListener('click', openModal);
-        btnPublishFab.addEventListener('click', openModal);
-        modalClose.addEventListener('click', closeModal);
-        modalOverlay.addEventListener('click', (e) => {
-            if (e.target === modalOverlay) closeModal();
+    if (commentTextarea) {
+        commentTextarea.addEventListener('input', () => {
+            commentPostBtn.disabled = commentTextarea.value.trim().length === 0;
         });
+    }
 
-        modalTextarea.addEventListener('input', () => {
-            modalPostBtn.disabled = modalTextarea.value.trim().length === 0 && !pendingImageData;
-            modalTextarea.style.height = 'auto';
-            modalTextarea.style.height = modalTextarea.scrollHeight + 'px';
+    if (commentPostBtn) {
+        commentPostBtn.addEventListener('click', () => {
+            addComment(commentTextarea.value);
         });
-
-        // Image upload in modal
-        const modalImageBtn = document.querySelector('.modal-body .action-icons i[data-lucide="image"]');
-        if (modalImageBtn) {
-            modalImageBtn.addEventListener('click', () => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    let previewContainer = document.querySelector('.modal-body .image-preview-container');
-                    if (!previewContainer) {
-                        previewContainer = document.createElement('div');
-                        previewContainer.className = 'image-preview-container';
-                        document.querySelector('.modal-body .composer-content').insertBefore(previewContainer, document.querySelector('.modal-body .composer-actions'));
-                    }
-                    handleImageUpload(file, previewContainer, () => {
-                        modalPostBtn.disabled = modalTextarea.value.trim().length === 0;
-                    });
-                    modalPostBtn.disabled = false;
-                };
-                input.click();
-            });
-        }
-
-        modalPostBtn.addEventListener('click', () => {
-            // Use Firestore always
-            createFirestorePost(modalTextarea.value.trim(), pendingImageData);
-            closeModal();
-        });
-
-        // Comment modal
-        const commentModalOverlay = document.getElementById('comment-modal-overlay');
-        const commentTextarea = document.getElementById('comment-textarea');
-        const commentPostBtn = document.getElementById('comment-post-btn');
-        const commentModalClose = document.getElementById('comment-modal-close');
-
-        if (commentModalClose) {
-            commentModalClose.addEventListener('click', closeCommentModal);
-        }
-
-        if (commentModalOverlay) {
-            commentModalOverlay.addEventListener('click', (e) => {
-                if (e.target === commentModalOverlay) closeCommentModal();
-            });
-        }
-
-        if (commentTextarea) {
-            commentTextarea.addEventListener('input', () => {
-                commentPostBtn.disabled = commentTextarea.value.trim().length === 0;
-            });
-        }
-
-        if (commentPostBtn) {
-            commentPostBtn.addEventListener('click', () => {
-                addComment(commentTextarea.value);
-            });
-        }
     }
 
     // Post interactions (event delegation)
@@ -1196,28 +1180,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 2000);
     }
     // Navigation Views
-    // Navigation Views
-    function showNotifications() {
-        const modalHtml = `
-            <div class="modal-overlay active" id="notifications-modal">
-                <div class="modal-container">
-                    <div class="modal-header">
-                        <h2>Notificaciones</h2>
-                        <button class="btn-icon" onclick="document.getElementById('notifications-modal').remove()"><i data-lucide="x"></i></button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="empty-state">
-                            <div class="empty-icon"><i data-lucide="bell"></i></div>
-                            <h3>No tienes notificaciones</h3>
-                            <p>Cuando alguien interactúe contigo, aparecerá aquí.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.body.insertAdjacentHTML('beforeend', modalHtml);
-        lucide.createIcons();
-    }
 
     async function showExplore() {
         showToast("Explorar: Cargando usuarios...");
