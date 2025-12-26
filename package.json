@@ -1,0 +1,21 @@
+{
+    "name": "rayo",
+    "private": true,
+    "version": "1.0.0",
+    "description": "Red social en tiempo real estilo Twitter",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "vite build",
+        "preview": "vite preview"
+    },
+    "devDependencies": {
+        "vite": "^5.0.0"
+    },
+    "keywords": [
+        "social-network",
+        "firebase",
+        "real-time"
+    ],
+    "author": "Vicenzo Scavino"
+}

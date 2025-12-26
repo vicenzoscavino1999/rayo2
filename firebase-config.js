@@ -5,16 +5,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, where, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-// Tu configuración de Firebase (para desarrollo)
-// NOTA: Para producción, estas credenciales deberían estar en variables de entorno
+// Tu configuración de Firebase desde variables de entorno
+// Las variables VITE_ se exponen al cliente durante el build
 const firebaseConfig = {
-    apiKey: "AIzaSyCOQThWBj6niqo6a1Ezv9BvA4guAn-LSJA",
-    authDomain: "rayo-app-47718.firebaseapp.com",
-    projectId: "rayo-app-47718",
-    storageBucket: "rayo-app-47718.firebasestorage.app",
-    messagingSenderId: "783914127570",
-    appId: "1:783914127570:web:d7b8be11d79f994a4ddd6b",
-    measurementId: "G-JDRE6WWKZ2"
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
 // Inicializar Firebase
