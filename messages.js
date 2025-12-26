@@ -19,7 +19,7 @@ import {
     getDoc,
     setDoc,
     Timestamp
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+} from "firebase/firestore";
 
 // Check if we're in Firebase mode
 const isFirebaseMode = localStorage.getItem('rayo_firebase_user') === 'true';

@@ -18,7 +18,7 @@ async function initFirestore() {
         const firebaseConfig = await import('./firebase-config.js');
         db = firebaseConfig.db;
 
-        const firestore = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+        const firestore = await import("firebase/firestore");
         collection = firestore.collection;
         addDoc = firestore.addDoc;
         getDocs = firestore.getDocs;
