@@ -871,9 +871,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <span class="edit-counter"><span id="bio-count">${(userInfo.bio || '').length}</span>/160</span>
                         </div>
                         <div class="edit-field">
-                            <label for="edit-photo-url">URL de foto (opcional)</label>
-                            <input type="url" id="edit-photo-url" value="${userInfo.photoURL}" placeholder="https://...">
-                            <span class="edit-hint">Pega la URL de una imagen para cambiar tu foto</span>
+                            <label>Foto de perfil</label>
+                            <div class="edit-photo-upload">
+                                <input type="file" id="edit-photo-file" accept="image/*" hidden>
+                                <button type="button" class="edit-upload-btn" id="edit-upload-btn">
+                                    <i data-lucide="camera"></i>
+                                    Cambiar foto
+                                </button>
+                                <span class="edit-upload-status" id="edit-upload-status"></span>
+                            </div>
+                            <input type="hidden" id="edit-photo-url" value="${userInfo.photoURL}">
                         </div>
                     </div>
                 </div>
@@ -906,11 +913,68 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('bio-count').textContent = bioInput.value.length;
         });
 
-        // Photo URL preview
-        photoUrlInput.addEventListener('change', () => {
-            const url = photoUrlInput.value.trim();
-            if (url) {
-                avatarPreview.src = url;
+        // Photo Upload to Cloudinary
+        const uploadBtn = document.getElementById('edit-upload-btn');
+        const fileInput = document.getElementById('edit-photo-file');
+        const uploadStatus = document.getElementById('edit-upload-status');
+
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            // Validate file
+            if (!file.type.startsWith('image/')) {
+                showToast('Por favor selecciona una imagen');
+                return;
+            }
+
+            if (file.size > 5 * 1024 * 1024) { // 5MB limit
+                showToast('La imagen es muy grande (máx 5MB)');
+                return;
+            }
+
+            // Show uploading state
+            uploadBtn.disabled = true;
+            uploadStatus.textContent = 'Subiendo...';
+            uploadStatus.className = 'edit-upload-status uploading';
+
+            try {
+                // Upload to Cloudinary
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('upload_preset', 'rayo_uploads');
+                formData.append('cloud_name', 'dratkmkeh');
+
+                const response = await fetch('https://api.cloudinary.com/v1_1/dratkmkeh/image/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error('Error al subir imagen');
+                }
+
+                const data = await response.json();
+                const imageUrl = data.secure_url;
+
+                // Update preview and hidden input
+                avatarPreview.src = imageUrl;
+                photoUrlInput.value = imageUrl;
+
+                uploadStatus.textContent = '✓ Foto actualizada';
+                uploadStatus.className = 'edit-upload-status success';
+
+            } catch (error) {
+                console.error('Upload error:', error);
+                uploadStatus.textContent = '✗ Error al subir';
+                uploadStatus.className = 'edit-upload-status error';
+                showToast('Error al subir la imagen. Intenta de nuevo.');
+            } finally {
+                uploadBtn.disabled = false;
             }
         });
 

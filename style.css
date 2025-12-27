@@ -1741,3 +1741,59 @@ body {
     color: var(--text-muted);
     margin-top: 4px;
 }
+
+/* Photo Upload Styles */
+.edit-photo-upload {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.edit-upload-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 9999px;
+    border: 2px solid var(--border);
+    background: white;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-main);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.edit-upload-btn:hover {
+    background: var(--bg-secondary);
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.edit-upload-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.edit-upload-btn i {
+    width: 18px;
+    height: 18px;
+}
+
+.edit-upload-status {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.edit-upload-status.uploading {
+    color: var(--primary);
+}
+
+.edit-upload-status.success {
+    color: #00ba7c;
+}
+
+.edit-upload-status.error {
+    color: #f4212e;
+}
