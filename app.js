@@ -702,9 +702,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const isOwnProfile = currentUser && userId === currentUser.uid;
 
+            const messageBtn = !isOwnProfile ?
+                `<button class="btn-message-profile" data-user-id="${userId}" data-username="${userInfo.username}" data-name="${userInfo.displayName}" data-photo="${userInfo.photoURL}"><i data-lucide="mail"></i></button>` : '';
+
             const actionBtn = isOwnProfile ?
                 '<button class="btn-edit-profile">Editar perfil</button>' :
-                `<button class="btn-follow-profile ${isFollowingUser ? 'following' : ''}" data-user-id="${userId}">${isFollowingUser ? 'Siguiendo' : 'Seguir'}</button>`;
+                `${messageBtn}<button class="btn-follow-profile ${isFollowingUser ? 'following' : ''}" data-user-id="${userId}">${isFollowingUser ? 'Siguiendo' : 'Seguir'}</button>`;
 
             const followersCount = userInfo.followers.length;
             const followingCount = userInfo.following.length;
@@ -797,6 +800,28 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (editBtn) {
                 editBtn.addEventListener('click', () => {
                     alert("Editar perfil próximamente");
+                });
+            }
+
+            // Message Button - Redirect to messages with user info
+            const msgBtn = container.querySelector('.btn-message-profile');
+            if (msgBtn) {
+                msgBtn.addEventListener('click', () => {
+                    const targetUserId = msgBtn.dataset.userId;
+                    const targetUsername = msgBtn.dataset.username;
+                    const targetName = msgBtn.dataset.name;
+                    const targetPhoto = msgBtn.dataset.photo;
+
+                    // Store user info for messages page
+                    sessionStorage.setItem('startConversationWith', JSON.stringify({
+                        id: targetUserId,
+                        username: targetUsername,
+                        displayName: targetName,
+                        photoURL: targetPhoto
+                    }));
+
+                    // Redirect to messages
+                    window.location.href = '/messages.html';
                 });
             }
 

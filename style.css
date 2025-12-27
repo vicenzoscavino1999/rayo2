@@ -1261,3 +1261,39 @@ body {
     border-color: #f4212e;
     color: #f4212e;
 }
+
+/* MESSAGE BUTTON IN PROFILE */
+.btn-message-profile {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: transparent;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    margin-right: 8px;
+}
+
+.btn-message-profile:hover {
+    background-color: var(--primary-soft);
+    border-color: var(--primary);
+}
+
+.btn-message-profile i {
+    width: 20px;
+    height: 20px;
+    color: var(--text-main);
+}
+
+.btn-message-profile:hover i {
+    color: var(--primary);
+}
+
+.profile-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}

@@ -56,7 +56,24 @@ document.addEventListener('DOMContentLoaded', () => {
     subscribeToConversations();
     loadFirestoreUsersList();
 
+    // Check if we came from a profile to start a conversation
+    checkStartConversation();
+
     lucide.createIcons();
+
+    // ==================== CHECK START CONVERSATION FROM PROFILE ====================
+    function checkStartConversation() {
+        const startData = sessionStorage.getItem('startConversationWith');
+        if (startData) {
+            sessionStorage.removeItem('startConversationWith');
+            const targetUser = JSON.parse(startData);
+
+            // Wait a bit for conversations to load, then start/open conversation
+            setTimeout(async () => {
+                await startFirestoreConversation(targetUser.id);
+            }, 1000);
+        }
+    }
 
     // ==================== USER UI ====================
     function updateUserUI(user) {
