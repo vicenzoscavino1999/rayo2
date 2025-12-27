@@ -1209,21 +1209,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function showExplore() {
         showToast("Explorar: Cargando usuarios...");
 
-        // Modal for search results
+        // Modal for search results - improved design
         const modalHtml = `
-            <div class="modal-overlay active" id="explore-modal">
-                <div class="modal-container">
-                    <div class="modal-header">
-                        <h2>Explorar Usuarios</h2>
-                        <button class="btn-icon" onclick="document.getElementById('explore-modal').remove()"><i data-lucide="x"></i></button>
+            <div class="explore-overlay active" id="explore-modal">
+                <div class="explore-modal">
+                    <div class="explore-header">
+                        <h2><i data-lucide="users" class="explore-icon"></i> Explorar Usuarios</h2>
+                        <button class="explore-close" onclick="document.getElementById('explore-modal').remove()">
+                            <i data-lucide="x"></i>
+                        </button>
                     </div>
-                    <div class="modal-body">
-                         <div class="search-bar" style="margin-bottom: 20px;">
-                            <i data-lucide="search"></i>
-                            <input type="text" placeholder="Buscar personas..." id="explore-search-input" style="width: 100%;">
-                        </div>
-                        <div id="explore-results">
-                            <div class="loader-spinner"></div>
+                    <div class="explore-search">
+                        <i data-lucide="search"></i>
+                        <input type="text" placeholder="Buscar por nombre o @usuario..." id="explore-search-input">
+                    </div>
+                    <div class="explore-results" id="explore-results">
+                        <div class="explore-loading">
+                            <i data-lucide="loader-2" class="spin"></i>
+                            <span>Cargando usuarios...</span>
                         </div>
                     </div>
                 </div>
@@ -1242,19 +1245,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             const snapshot = await getDocs(q);
 
             if (snapshot.empty) {
-                resultsContainer.innerHTML = '<p style="text-align:center; color: var(--text-secondary)">No hay usuarios encontrados.</p>';
+                resultsContainer.innerHTML = '<div class="explore-empty"><i data-lucide="user-x"></i><p>No hay usuarios registrados aún.</p></div>';
+                lucide.createIcons();
             } else {
                 resultsContainer.innerHTML = '';
                 snapshot.forEach(doc => {
                     const userData = doc.data();
                     const userEl = document.createElement('div');
-                    userEl.className = 'user-result-item';
-                    userEl.style.cssText = 'display: flex; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;';
+                    userEl.className = 'explore-user-card';
                     userEl.innerHTML = `
-                        <img src="${userData.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userData.uid}" alt="${userData.displayName}" class="avatar-small">
-                        <div style="margin-left: 10px;">
-                            <div style="font-weight: bold;">${userData.displayName || 'Usuario'}</div>
-                            <div style="color: var(--text-secondary);">@${userData.username || 'usuario'}</div>
+                        <img src="${userData.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userData.uid}" alt="${userData.displayName}" class="explore-avatar">
+                        <div class="explore-user-info">
+                            <span class="explore-name">${userData.displayName || 'Usuario'}</span>
+                            <span class="explore-username">@${userData.username || 'usuario'}</span>
+                        </div>
+                        <div class="explore-action">
+                            <i data-lucide="chevron-right"></i>
                         </div>
                     `;
                     userEl.addEventListener('click', () => {
@@ -1263,6 +1269,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                     resultsContainer.appendChild(userEl);
                 });
+                lucide.createIcons();
             }
 
             // Search functionality
@@ -1280,13 +1287,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (userData.displayName?.toLowerCase().includes(term) || userData.username?.toLowerCase().includes(term)) {
                         foundAny = true;
                         const userEl = document.createElement('div');
-                        userEl.className = 'user-result-item';
-                        userEl.style.cssText = 'display: flex; align-items: center; padding: 10px; border-bottom: 1px solid var(--border-color); cursor: pointer;';
+                        userEl.className = 'explore-user-card';
                         userEl.innerHTML = `
-                            <img src="${userData.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userData.uid}" alt="${userData.displayName}" class="avatar-small">
-                            <div style="margin-left: 10px;">
-                                <div style="font-weight: bold;">${userData.displayName || 'Usuario'}</div>
-                                <div style="color: var(--text-secondary);">@${userData.username || 'usuario'}</div>
+                            <img src="${userData.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userData.uid}" alt="${userData.displayName}" class="explore-avatar">
+                            <div class="explore-user-info">
+                                <span class="explore-name">${userData.displayName || 'Usuario'}</span>
+                                <span class="explore-username">@${userData.username || 'usuario'}</span>
+                            </div>
+                            <div class="explore-action">
+                                <i data-lucide="chevron-right"></i>
                             </div>
                         `;
                         userEl.addEventListener('click', () => {
@@ -1296,9 +1305,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         resultsContainer.appendChild(userEl);
                     }
                 });
+                lucide.createIcons();
 
                 if (!foundAny) {
-                    resultsContainer.innerHTML = '<p style="text-align:center; color: var(--text-secondary)">No hay coincidencias.</p>';
+                    resultsContainer.innerHTML = '<div class="explore-empty"><i data-lucide="search-x"></i><p>No se encontraron coincidencias.</p></div>';
+                    lucide.createIcons();
                 }
 
             });
