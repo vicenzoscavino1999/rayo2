@@ -795,11 +795,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 });
             }
 
-            // Edit Profile Button (Placeholder)
+            // Edit Profile Button - Opens edit modal
             const editBtn = container.querySelector('.btn-edit-profile');
             if (editBtn) {
                 editBtn.addEventListener('click', () => {
-                    alert("Editar perfil próximamente");
+                    showEditProfileModal(userInfo);
                 });
             }
 
@@ -831,6 +831,179 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Fallback for demo/dev if needed, but we want to stick to Firestore
             container.innerHTML = `<div class="error-message">Error al cargar perfil: ${error.message}</div>`;
         }
+    }
+
+    // ==================== EDIT PROFILE MODAL ====================
+    function showEditProfileModal(userInfo) {
+        const modalHtml = `
+            <div class="edit-profile-overlay active" id="edit-profile-modal">
+                <div class="edit-profile-modal">
+                    <div class="edit-profile-header">
+                        <button class="edit-close" id="edit-cancel-btn">
+                            <i data-lucide="x"></i>
+                        </button>
+                        <h2>Editar perfil</h2>
+                        <button class="edit-save-btn" id="edit-save-btn">Guardar</button>
+                    </div>
+                    <div class="edit-profile-banner">
+                        <div class="edit-profile-avatar-container">
+                            <img src="${userInfo.photoURL}" alt="${userInfo.displayName}" class="edit-profile-avatar" id="edit-avatar-preview">
+                        </div>
+                    </div>
+                    <div class="edit-profile-form">
+                        <div class="edit-field">
+                            <label for="edit-name">Nombre</label>
+                            <input type="text" id="edit-name" value="${userInfo.displayName}" maxlength="50" placeholder="Tu nombre">
+                            <span class="edit-counter"><span id="name-count">${userInfo.displayName.length}</span>/50</span>
+                        </div>
+                        <div class="edit-field">
+                            <label for="edit-username">Usuario</label>
+                            <div class="edit-input-prefix">
+                                <span>@</span>
+                                <input type="text" id="edit-username" value="${userInfo.username}" maxlength="20" placeholder="usuario">
+                            </div>
+                            <span class="edit-counter"><span id="username-count">${userInfo.username.length}</span>/20</span>
+                            <span class="edit-error" id="username-error"></span>
+                        </div>
+                        <div class="edit-field">
+                            <label for="edit-bio">Biografía</label>
+                            <textarea id="edit-bio" maxlength="160" placeholder="Cuéntanos sobre ti...">${userInfo.bio || ''}</textarea>
+                            <span class="edit-counter"><span id="bio-count">${(userInfo.bio || '').length}</span>/160</span>
+                        </div>
+                        <div class="edit-field">
+                            <label for="edit-photo-url">URL de foto (opcional)</label>
+                            <input type="url" id="edit-photo-url" value="${userInfo.photoURL}" placeholder="https://...">
+                            <span class="edit-hint">Pega la URL de una imagen para cambiar tu foto</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        lucide.createIcons();
+
+        const modal = document.getElementById('edit-profile-modal');
+        const nameInput = document.getElementById('edit-name');
+        const usernameInput = document.getElementById('edit-username');
+        const bioInput = document.getElementById('edit-bio');
+        const photoUrlInput = document.getElementById('edit-photo-url');
+        const avatarPreview = document.getElementById('edit-avatar-preview');
+        const saveBtn = document.getElementById('edit-save-btn');
+        const cancelBtn = document.getElementById('edit-cancel-btn');
+
+        // Character counters
+        nameInput.addEventListener('input', () => {
+            document.getElementById('name-count').textContent = nameInput.value.length;
+        });
+
+        usernameInput.addEventListener('input', () => {
+            document.getElementById('username-count').textContent = usernameInput.value.length;
+            document.getElementById('username-error').textContent = '';
+        });
+
+        bioInput.addEventListener('input', () => {
+            document.getElementById('bio-count').textContent = bioInput.value.length;
+        });
+
+        // Photo URL preview
+        photoUrlInput.addEventListener('change', () => {
+            const url = photoUrlInput.value.trim();
+            if (url) {
+                avatarPreview.src = url;
+            }
+        });
+
+        // Close modal
+        cancelBtn.addEventListener('click', () => {
+            modal.remove();
+        });
+
+        // Click overlay to close
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+
+        // Save profile
+        saveBtn.addEventListener('click', async () => {
+            const newName = nameInput.value.trim();
+            const newUsername = usernameInput.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+            const newBio = bioInput.value.trim();
+            const newPhotoUrl = photoUrlInput.value.trim() || userInfo.photoURL;
+
+            // Validation
+            if (!newName) {
+                showToast('El nombre es requerido');
+                return;
+            }
+
+            if (!newUsername) {
+                showToast('El usuario es requerido');
+                return;
+            }
+
+            // Check username uniqueness if changed
+            if (newUsername !== userInfo.username) {
+                try {
+                    const usernameQuery = query(
+                        collection(db, "users"),
+                        where("username", "==", newUsername),
+                        limit(1)
+                    );
+                    const usernameCheck = await getDocs(usernameQuery);
+
+                    if (!usernameCheck.empty) {
+                        document.getElementById('username-error').textContent = 'Este usuario ya está en uso';
+                        return;
+                    }
+                } catch (err) {
+                    console.error("Error checking username:", err);
+                }
+            }
+
+            // Show saving state
+            saveBtn.textContent = 'Guardando...';
+            saveBtn.disabled = true;
+
+            try {
+                // Update Firestore
+                const userRef = doc(db, "users", currentUser.uid);
+                await updateDoc(userRef, {
+                    displayName: newName,
+                    username: newUsername,
+                    bio: newBio,
+                    photoURL: newPhotoUrl
+                });
+
+                // Update local state
+                currentUser.displayName = newName;
+                currentUser.username = newUsername;
+                currentUser.bio = newBio;
+                currentUser.photoURL = newPhotoUrl;
+
+                // Update localStorage
+                localStorage.setItem('rayo_demo_user', JSON.stringify(currentUser));
+
+                // Update sidebar UI
+                document.getElementById('sidebar-avatar').src = newPhotoUrl;
+                document.getElementById('sidebar-name').textContent = newName;
+                document.getElementById('sidebar-handle').textContent = '@' + newUsername;
+
+                showToast('¡Perfil actualizado!');
+                modal.remove();
+
+                // Refresh profile view
+                showProfile(currentUser.uid);
+
+            } catch (error) {
+                console.error("Error updating profile:", error);
+                showToast('Error al guardar. Intenta de nuevo.');
+                saveBtn.textContent = 'Guardar';
+                saveBtn.disabled = false;
+            }
+        });
     }
 
     function showFeed() {
