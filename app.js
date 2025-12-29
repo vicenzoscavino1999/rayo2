@@ -1684,6 +1684,53 @@ document.addEventListener('DOMContentLoaded', async () => {
             setTimeout(() => toast.remove(), 300);
         }, 2000);
     }
+
+    // ==================== MOBILE NAVIGATION ====================
+    function updateMobileNavActive(activeId) {
+        document.querySelectorAll('.mobile-nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        document.getElementById(activeId)?.classList.add('active');
+    }
+
+    // Mobile nav event listeners
+    const mobileNavHome = document.getElementById('mobile-nav-home');
+    const mobileNavExplore = document.getElementById('mobile-nav-explore');
+    const mobileNavNotifications = document.getElementById('mobile-nav-notifications');
+    const mobileNavProfile = document.getElementById('mobile-nav-profile');
+
+    if (mobileNavHome) {
+        mobileNavHome.addEventListener('click', (e) => {
+            e.preventDefault();
+            showFeed();
+            updateMobileNavActive('mobile-nav-home');
+        });
+    }
+
+    if (mobileNavExplore) {
+        mobileNavExplore.addEventListener('click', (e) => {
+            e.preventDefault();
+            showExplore();
+            updateMobileNavActive('mobile-nav-explore');
+        });
+    }
+
+    if (mobileNavNotifications) {
+        mobileNavNotifications.addEventListener('click', (e) => {
+            e.preventDefault();
+            showNotifications();
+            updateMobileNavActive('mobile-nav-notifications');
+        });
+    }
+
+    if (mobileNavProfile) {
+        mobileNavProfile.addEventListener('click', (e) => {
+            e.preventDefault();
+            showProfile(currentUser.uid);
+            updateMobileNavActive('mobile-nav-profile');
+        });
+    }
+
     // Navigation Views
 
     async function showExplore() {

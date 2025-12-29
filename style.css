@@ -1797,3 +1797,92 @@ body {
 .edit-upload-status.error {
     color: #f4212e;
 }
+
+/* ==================== MOBILE BOTTOM NAVIGATION ==================== */
+.mobile-nav {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+    padding: 8px 0;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+    z-index: 1000;
+}
+
+.mobile-nav-items {
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+.mobile-nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    color: var(--text-muted);
+    text-decoration: none;
+    border-radius: 12px;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.mobile-nav-item:active {
+    transform: scale(0.95);
+    background: var(--primary-soft);
+}
+
+.mobile-nav-item i {
+    width: 24px;
+    height: 24px;
+}
+
+.mobile-nav-item.active {
+    color: var(--primary);
+}
+
+.mobile-nav-item.active i {
+    stroke-width: 2.5;
+}
+
+.mobile-nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 8px;
+    background: var(--primary);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    min-width: 16px;
+    text-align: center;
+}
+
+/* Show mobile nav on small screens */
+@media (max-width: 600px) {
+    .mobile-nav {
+        display: block;
+    }
+
+    /* Add padding to main content so it doesn't get hidden behind nav */
+    .main-feed {
+        padding-bottom: 70px;
+    }
+
+    /* Hide composer avatar on very small screens for more space */
+    .avatar-small {
+        width: 40px;
+        height: 40px;
+    }
+
+    .composer-content textarea {
+        font-size: 16px;
+    }
+}
