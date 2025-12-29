@@ -786,6 +786,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('comment-post-btn').disabled = true;
     }
 
+    // ==================== SHOW FEED (Home View) ====================
+    function showFeed() {
+        // Restore header to original feed tabs
+        const header = document.querySelector('.feed-header');
+        header.innerHTML = `
+            <div class="feed-tabs">
+                <div class="tab active" data-tab="para-ti">Para ti</div>
+                <div class="tab" data-tab="siguiendo">Siguiendo</div>
+            </div>
+            <div class="header-settings">
+                <i data-lucide="settings"></i>
+            </div>
+        `;
+
+        // Show composer again
+        const composer = document.querySelector('.composer');
+        if (composer) {
+            composer.style.display = 'block';
+        }
+
+        // Clear posts container and reload posts
+        const container = document.getElementById('posts-container');
+        container.innerHTML = '<div class="loading-spinner"><i data-lucide="loader-2" class="animate-spin"></i></div>';
+
+        // Re-render icons
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+
+        // Re-subscribe to posts / render cached posts
+        if (currentFirestorePosts.length > 0) {
+            renderPosts(currentFirestorePosts);
+        } else if (firestoreReady) {
+            subscribeToFirestorePosts();
+        }
+
+        // Update nav active state
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        document.getElementById('nav-home')?.classList.add('active');
+    }
+
     // ==================== PROFILE ====================
     async function showProfile(userId) {
         currentView = 'profile';
@@ -1604,6 +1647,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     document.getElementById('user-profile-mini').addEventListener('click', () => {
         showProfile(currentUser.uid);
+    });
+
+    // Home navigation
+    document.getElementById('nav-home').addEventListener('click', (e) => {
+        e.preventDefault();
+        showFeed();
+    });
+
+    // Delegated event listener for back buttons (btn-back can be dynamically added)
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-back') || e.target.closest('.btn-back')) {
+            e.preventDefault();
+            showFeed();
+        }
     });
 
     // Escape key closes modals
