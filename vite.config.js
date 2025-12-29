@@ -13,7 +13,9 @@ export default defineConfig({
             input: {
                 main: resolve(__dirname, 'index.html'),
                 login: resolve(__dirname, 'login.html'),
-                messages: resolve(__dirname, 'messages.html')
+                messages: resolve(__dirname, 'messages.html'),
+                terms: resolve(__dirname, 'terms.html'),
+                privacy: resolve(__dirname, 'privacy.html')
             }
         }
     },
