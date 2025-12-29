@@ -6,21 +6,30 @@ Una red social moderna estilo Twitter construida con JavaScript vanilla y Fireba
 
 ## 🚀 Demo en Vivo
 
-**👉 [https://rayo-7hyg.vercel.app](https://rayo-7hyg.vercel.app)**
+**👉 [https://rayo-zeta.vercel.app](https://rayo-zeta.vercel.app)**
 
 ## ✨ Características
 
 ### Autenticación
 - 🔐 Login con Google (OAuth 2.0)
 - 📧 Registro con Email/Contraseña
+- 🔑 Recuperación de contraseña
 - 🔒 Autenticación segura con Firebase Auth
 
 ### Posts & Feed
 - ✍️ Crear publicaciones con texto e imágenes
+- 📷 Subida de imágenes con Cloudinary
 - ❤️ Likes sincronizados en tiempo real
 - 💬 Comentarios compartidos entre usuarios
 - 🗑️ Eliminar publicaciones propias
 - 🔄 Actualización automática sin refresh
+
+### Perfiles de Usuario
+- 👤 Perfiles personalizables
+- 📸 Foto de perfil con upload a Cloudinary
+- ✏️ Editar nombre, usuario y biografía
+- 👥 Sistema de seguidores/siguiendo
+- ✓ Verificación de cuentas
 
 ### Mensajería
 - 💬 Mensajes directos en tiempo real
@@ -30,18 +39,25 @@ Una red social moderna estilo Twitter construida con JavaScript vanilla y Fireba
 
 ### UX/UI
 - 🎨 Diseño moderno inspirado en Twitter/X
-- 📱 Responsive para móvil y desktop
+- 📱 **Diseño responsive para móvil y desktop**
+- 📲 Navegación inferior para móvil
 - 🌙 Interfaz elegante con animaciones suaves
 - ⚡ Carga rápida y rendimiento optimizado
+
+### Legal & Soporte
+- 📜 Términos de Servicio
+- 🔐 Política de Privacidad
 
 ## 🛠️ Tecnologías
 
 | Categoría | Tecnología |
 |-----------|------------|
 | **Frontend** | HTML5, CSS3, JavaScript (ES6+) |
+| **Build Tool** | Vite |
 | **Backend** | Firebase (Serverless) |
 | **Base de Datos** | Cloud Firestore (NoSQL, Real-time) |
 | **Autenticación** | Firebase Auth (Google OAuth) |
+| **Imágenes** | Cloudinary |
 | **Hosting** | Vercel (CI/CD automático) |
 | **Control de Versiones** | Git + GitHub |
 
@@ -52,12 +68,16 @@ rayo/
 ├── index.html          # Página principal (Feed)
 ├── login.html          # Autenticación
 ├── messages.html       # Mensajería directa
+├── terms.html          # Términos de Servicio
+├── privacy.html        # Política de Privacidad
 ├── app.js              # Lógica del feed y posts
 ├── messages.js         # Lógica de mensajes real-time
 ├── firebase-config.js  # Configuración de Firebase
-├── firestore-service.js # Servicios de Firestore
+├── utils.js            # Utilidades compartidas
 ├── style.css           # Estilos principales
-└── messages.css        # Estilos de mensajería
+├── messages.css        # Estilos de mensajería
+├── vite.config.js      # Configuración de Vite
+└── package.json        # Dependencias npm
 ```
 
 ## 🏗️ Arquitectura
@@ -75,54 +95,69 @@ rayo/
 │   Vercel        │     │   Firestore     │
 │   (Hosting)     │     │   (Database)    │
 └─────────────────┘     └─────────────────┘
+         │
+         ▼
+┌─────────────────┐
+│   Cloudinary    │
+│   (Imágenes)    │
+└─────────────────┘
 ```
 
 ## 🚀 Instalación Local
 
 1. Clona el repositorio:
 ```bash
-git clone https://github.com/vicenzoscavino1999/rayo.git
-cd rayo
+git clone https://github.com/vicenzoscavino1999/rayo2.git
+cd rayo2
 ```
 
-2. Abre con un servidor local:
+2. Instala las dependencias:
 ```bash
-# Con Python
-python -m http.server 8000
-
-# O con Node.js
-npx serve
+npm install
 ```
 
-3. Abre `http://localhost:8000` en tu navegador
+3. Configura las variables de entorno (crea `.env`):
+```env
+VITE_FIREBASE_API_KEY=tu_api_key
+VITE_FIREBASE_AUTH_DOMAIN=tu_auth_domain
+VITE_FIREBASE_PROJECT_ID=tu_project_id
+VITE_FIREBASE_STORAGE_BUCKET=tu_storage_bucket
+VITE_FIREBASE_MESSAGING_SENDER_ID=tu_sender_id
+VITE_FIREBASE_APP_ID=tu_app_id
+VITE_CLOUDINARY_CLOUD_NAME=tu_cloud_name
+VITE_CLOUDINARY_UPLOAD_PRESET=tu_upload_preset
+```
 
-## 📝 Variables de Entorno
+4. Inicia el servidor de desarrollo:
+```bash
+npm run dev
+```
 
-El proyecto usa Firebase. Para tu propia instancia, actualiza `firebase-config.js`:
+5. Abre `http://localhost:3000` en tu navegador
 
-```javascript
-const firebaseConfig = {
-  apiKey: "TU_API_KEY",
-  authDomain: "tu-proyecto.firebaseapp.com",
-  projectId: "tu-proyecto",
-  // ...
-};
+## 🔧 Scripts Disponibles
+
+```bash
+npm run dev    # Servidor de desarrollo
+npm run build  # Build para producción
+npm run preview # Preview del build
 ```
 
 ## 🎯 Características Técnicas Destacadas
 
 - **Real-time Sync**: Uso de `onSnapshot` de Firestore para actualizaciones instantáneas
 - **Optimistic UI**: Updates visuales inmediatos antes de confirmación del servidor
-- **Fallback Graceful**: LocalStorage como backup si Firestore no está disponible
+- **Responsive Design**: Navegación móvil con barra inferior estilo Instagram
+- **Image Upload**: Integración con Cloudinary para fotos de perfil y posts
 - **Event Delegation**: Manejo eficiente de eventos para mejor performance
 - **Modular Code**: Separación clara de responsabilidades entre archivos
+- **Vite Build**: Bundling moderno y rápido para producción
 
 ## 👨‍💻 Autor
 
 **Vicenzo Scavino**
 
 - GitHub: [@vicenzoscavino1999](https://github.com/vicenzoscavino1999)
-- LinkedIn: [Tu LinkedIn aquí]
 
 ## 📄 Licencia
 
