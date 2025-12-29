@@ -82,6 +82,9 @@
                 </div>
                 <div class="chat-active" id="chat-active" style="display: none;">
                     <div class="chat-header">
+                        <button class="btn-icon btn-back-chat" id="btn-back-chat">
+                            <i data-lucide="arrow-left"></i>
+                        </button>
                         <img src="" alt="" class="avatar-small" id="chat-user-avatar">
                         <div class="chat-user-info">
                             <span class="chat-user-name" id="chat-user-name"></span>
@@ -128,6 +131,28 @@
             </div>
         </div>
     </div>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="mobile-nav" id="mobile-nav">
+        <div class="mobile-nav-items">
+            <a href="index.html" class="mobile-nav-item" id="mobile-nav-home">
+                <i data-lucide="home"></i>
+            </a>
+            <a href="#" class="mobile-nav-item" id="mobile-nav-explore"
+                onclick="window.location.href='index.html?view=explore'; return false;">
+                <i data-lucide="search"></i>
+            </a>
+            <a href="messages.html" class="mobile-nav-item active" id="mobile-nav-messages">
+                <i data-lucide="mail"></i>
+            </a>
+            <a href="index.html?view=notifications" class="mobile-nav-item" id="mobile-nav-notifications">
+                <i data-lucide="bell"></i>
+            </a>
+            <a href="index.html?view=profile" class="mobile-nav-item" id="mobile-nav-profile">
+                <i data-lucide="user"></i>
+            </a>
+        </div>
+    </nav>
 
     <script type="module" src="messages.js"></script>
 </body>

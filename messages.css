@@ -432,3 +432,40 @@
         z-index: 100;
     }
 }
+
+@media (max-width: 600px) {
+    .messages-container {
+        border: none;
+        padding-bottom: 70px;
+    }
+
+    .conversations-panel {
+        width: 100%;
+        max-width: none;
+    }
+
+    .conversation-item {
+        padding: 14px 16px;
+        min-height: 72px;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .chat-panel.active {
+        bottom: 70px;
+    }
+
+    .chat-input-area {
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    }
+}
+
+/* Hide back button on desktop, show on mobile */
+.btn-back-chat {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    .btn-back-chat {
+        display: flex;
+    }
+}

@@ -267,6 +267,9 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('chat-placeholder').style.display = 'none';
         document.getElementById('chat-active').style.display = 'flex';
 
+        // Make chat panel visible on mobile
+        document.getElementById('chat-panel').classList.add('active');
+
         if (otherUser) {
             document.getElementById('chat-user-avatar').src = otherUser.photoURL;
             document.getElementById('chat-user-name').textContent = otherUser.displayName;
@@ -517,6 +520,22 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton.addEventListener('click', () => {
         sendFirestoreMessage(messageInput.value);
     });
+
+    // Back button in chat (for mobile)
+    const btnBackChat = document.getElementById('btn-back-chat');
+    if (btnBackChat) {
+        btnBackChat.addEventListener('click', () => {
+            document.getElementById('chat-panel').classList.remove('active');
+            document.getElementById('chat-active').style.display = 'none';
+            document.getElementById('chat-placeholder').style.display = 'flex';
+            activeConversationId = null;
+
+            // Update conversation items to remove active state
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('active');
+            });
+        });
+    }
 
     // Logout
     document.getElementById('nav-logout').addEventListener('click', (e) => {
