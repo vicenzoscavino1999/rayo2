@@ -365,6 +365,11 @@
                     Continuar con Google
                 </button>
 
+                <div style="text-align: center; margin-top: 15px;">
+                    <a href="#" id="forgot-password-link"
+                        style="color: var(--primary); text-decoration: none; font-size: 14px;">¿Olvidaste tu
+                        contraseña?</a>
+                </div>
 
             </form>
 
@@ -411,6 +416,35 @@
             Privacidad</a>
     </div>
 
+    <!-- Modal de Recuperar Contraseña -->
+    <div id="reset-modal"
+        style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; padding: 30px; border-radius: 16px; max-width: 400px; width: 90%; margin: 20px;">
+            <h2 style="margin-bottom: 10px; color: #0f1419;">Recuperar Contraseña</h2>
+            <p style="color: #536471; margin-bottom: 20px; font-size: 14px;">Ingresa tu email y te enviaremos un enlace
+                para restablecer tu contraseña.</p>
+
+            <div id="reset-message" class="message" style="display: none;"></div>
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label for="reset-email" style="display: block; margin-bottom: 8px; font-weight: 500;">Email</label>
+                <input type="email" id="reset-email" placeholder="tu@email.com"
+                    style="width: 100%; padding: 14px 16px; border: 2px solid #cfd9de; border-radius: 12px; font-size: 15px; box-sizing: border-box;">
+            </div>
+
+            <button id="reset-btn"
+                style="width: 100%; padding: 14px; background: linear-gradient(135deg, #1d9bf0, #667eea); color: white; border: none; border-radius: 9999px; font-size: 15px; font-weight: 600; cursor: pointer;">
+                Enviar enlace
+            </button>
+
+            <button id="reset-cancel"
+                style="width: 100%; padding: 14px; background: transparent; color: #536471; border: none; font-size: 14px; cursor: pointer; margin-top: 10px;">
+                Cancelar
+            </button>
+        </div>
+    </div>
+
+
     <script type="module">
         lucide.createIcons();
 
@@ -426,6 +460,79 @@
                 tab.classList.add('active');
                 document.getElementById(`${tab.dataset.form}-form`).classList.add('active');
             });
+        });
+
+        // ==================== RECUPERAR CONTRASEÑA ====================
+        const resetModal = document.getElementById('reset-modal');
+        const forgotLink = document.getElementById('forgot-password-link');
+        const resetBtn = document.getElementById('reset-btn');
+        const resetCancel = document.getElementById('reset-cancel');
+        const resetMessage = document.getElementById('reset-message');
+        const resetEmail = document.getElementById('reset-email');
+
+        // Abrir modal
+        forgotLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            resetModal.style.display = 'flex';
+            resetEmail.value = document.getElementById('login-email').value || '';
+            resetMessage.style.display = 'none';
+        });
+
+        // Cerrar modal
+        resetCancel.addEventListener('click', () => {
+            resetModal.style.display = 'none';
+        });
+
+        // Cerrar al hacer click fuera
+        resetModal.addEventListener('click', (e) => {
+            if (e.target === resetModal) {
+                resetModal.style.display = 'none';
+            }
+        });
+
+        // Enviar email de recuperación
+        resetBtn.addEventListener('click', async () => {
+            const email = resetEmail.value.trim();
+
+            if (!email) {
+                resetMessage.style.display = 'block';
+                resetMessage.className = 'message error';
+                resetMessage.style.backgroundColor = 'rgba(244, 33, 46, 0.1)';
+                resetMessage.style.color = '#f4212e';
+                resetMessage.textContent = 'Por favor ingresa tu email';
+                return;
+            }
+
+            resetBtn.disabled = true;
+            resetBtn.textContent = 'Enviando...';
+
+            try {
+                const { resetPassword } = await import('./firebase-config.js');
+                const result = await resetPassword(email);
+
+                if (result.success) {
+                    resetMessage.style.display = 'block';
+                    resetMessage.className = 'message success';
+                    resetMessage.style.backgroundColor = 'rgba(0, 186, 124, 0.1)';
+                    resetMessage.style.color = '#00ba7c';
+                    resetMessage.textContent = '¡Email enviado! Revisa tu bandeja de entrada.';
+
+                    setTimeout(() => {
+                        resetModal.style.display = 'none';
+                    }, 3000);
+                } else {
+                    throw new Error(result.error);
+                }
+            } catch (error) {
+                resetMessage.style.display = 'block';
+                resetMessage.className = 'message error';
+                resetMessage.style.backgroundColor = 'rgba(244, 33, 46, 0.1)';
+                resetMessage.style.color = '#f4212e';
+                resetMessage.textContent = 'Error: ' + (error.message || 'No se pudo enviar el email');
+            } finally {
+                resetBtn.disabled = false;
+                resetBtn.textContent = 'Enviar enlace';
+            }
         });
 
 

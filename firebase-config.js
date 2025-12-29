@@ -2,7 +2,7 @@
 // Configuración de Firebase para Rayo ⚡
 
 import { initializeApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, where, getDoc, setDoc } from "firebase/firestore";
 
 // Tu configuración de Firebase desde variables de entorno
@@ -291,6 +291,16 @@ async function toggleFollow(targetUid) {
     }
 }
 
+// Restablecer contraseña
+async function resetPassword(email) {
+    try {
+        await sendPasswordResetEmail(auth, email);
+        return { success: true };
+    } catch (error) {
+        return { success: false, error: error.message };
+    }
+}
+
 // Exportar funciones
 export {
     auth,
@@ -307,5 +317,6 @@ export {
     toggleLike,
     deletePost,
     getUserProfile,
-    toggleFollow
+    toggleFollow,
+    resetPassword
 };
