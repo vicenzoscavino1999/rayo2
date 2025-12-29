@@ -1,6 +1,9 @@
 // messages.js - Direct Messages with Firestore real-time sync
 // Phase 1: Real-time messaging between users
 
+// Import shared utilities
+import { sanitizeHTML, getTimeAgo, formatDate, formatTime } from './utils.js';
+
 // Firebase imports
 import { db } from './firebase-config.js';
 import {
@@ -24,14 +27,7 @@ import {
 // Check if we're in Firebase mode
 const isFirebaseMode = true;
 
-// ==================== SECURITY: HTML SANITIZATION ====================
-// Prevent XSS attacks by escaping HTML characters
-function sanitizeHTML(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
+
 
 document.addEventListener('DOMContentLoaded', () => {
     // ==================== CHECK AUTH ====================
@@ -183,15 +179,22 @@ document.addEventListener('DOMContentLoaded', () => {
     async function createFirestoreConversationElement(conversation) {
         const otherUserId = conversation.participants.find(id => id !== currentUser.uid);
 
-        // Get other user info from Firestore
+        // Use denormalized data if available (avoids N+1 query)
         let otherUser = null;
-        try {
-            const userDoc = await getDoc(doc(db, "users", otherUserId));
-            if (userDoc.exists()) {
-                otherUser = userDoc.data();
+
+        if (conversation.participantInfo && conversation.participantInfo[otherUserId]) {
+            // Use cached/denormalized data - NO extra query needed!
+            otherUser = conversation.participantInfo[otherUserId];
+        } else {
+            // Fallback: fetch from Firestore (legacy conversations without denormalized data)
+            try {
+                const userDoc = await getDoc(doc(db, "users", otherUserId));
+                if (userDoc.exists()) {
+                    otherUser = userDoc.data();
+                }
+            } catch (error) {
+                console.error('Error getting user:', error);
             }
-        } catch (error) {
-            console.error('Error getting user:', error);
         }
 
         if (!otherUser) {
@@ -385,18 +388,38 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (existingConv) {
-                // Get other user info
-                const userDoc = await getDoc(doc(db, "users", otherUserId));
-                const otherUser = userDoc.exists() ? userDoc.data() : null;
+                // Use denormalized data if available, otherwise fetch
+                let otherUser = existingConv.participantInfo?.[otherUserId];
+                if (!otherUser) {
+                    const userDoc = await getDoc(doc(db, "users", otherUserId));
+                    otherUser = userDoc.exists() ? userDoc.data() : null;
+                }
 
                 closeModal();
                 openFirestoreConversation(existingConv.id, otherUser);
                 return;
             }
 
-            // Create new conversation
+            // Get other user info for denormalization
+            const otherUserDoc = await getDoc(doc(db, "users", otherUserId));
+            const otherUser = otherUserDoc.exists() ? otherUserDoc.data() : null;
+
+            // Create new conversation with denormalized participant info
             const convData = {
                 participants: [currentUser.uid, otherUserId],
+                // Denormalized data - avoids N+1 queries when listing conversations
+                participantInfo: {
+                    [currentUser.uid]: {
+                        displayName: currentUser.displayName,
+                        username: currentUser.username,
+                        photoURL: currentUser.photoURL
+                    },
+                    [otherUserId]: {
+                        displayName: otherUser?.displayName || 'Usuario',
+                        username: otherUser?.username || 'user',
+                        photoURL: otherUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${otherUserId}`
+                    }
+                },
                 lastMessage: '',
                 lastMessageTime: serverTimestamp(),
                 lastMessageSender: null,
@@ -405,10 +428,6 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             const docRef = await addDoc(collection(db, "conversations"), convData);
-
-            // Get other user info
-            const userDoc = await getDoc(doc(db, "users", otherUserId));
-            const otherUser = userDoc.exists() ? userDoc.data() : null;
 
             closeModal();
             openFirestoreConversation(docRef.id, otherUser);
@@ -451,40 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('new-message-modal').classList.remove('active');
     }
 
-    // ==================== UTILITIES ====================
-    function getTimeAgo(timestamp) {
-        const seconds = Math.floor((Date.now() - timestamp) / 1000);
-        if (seconds < 60) return 'ahora';
-        if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
-        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
-        if (seconds < 604800) return Math.floor(seconds / 86400) + 'd';
-        const date = new Date(timestamp);
-        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-    }
 
-    function formatDate(timestamp) {
-        const date = new Date(timestamp);
-        const today = new Date();
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-
-        if (date.toDateString() === today.toDateString()) {
-            return 'Hoy';
-        } else if (date.toDateString() === yesterday.toDateString()) {
-            return 'Ayer';
-        } else {
-            return date.toLocaleDateString('es-ES', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long'
-            });
-        }
-    }
-
-    function formatTime(timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-    }
 
     // ==================== EVENT LISTENERS ====================
 

@@ -1,6 +1,9 @@
 // app.js - Rayo Social Network
 // Main application with Firestore for multi-user
 
+// Import shared utilities
+import { sanitizeHTML, getTimeAgo, formatNumber, safeText, cloudinaryConfig, getCloudinaryUploadUrl } from './utils.js';
+
 const isFirebaseMode = true;
 let firestoreService = null;
 let unsubscribePosts = null;
@@ -8,7 +11,13 @@ let firestoreReady = false;
 let currentFirestorePosts = [];
 
 // Firebase imports for Firestore mode
-let db, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, where, getDoc, setDoc, arrayUnion, arrayRemove;
+let db, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, where, getDoc, setDoc, arrayUnion, arrayRemove, startAfter, increment;
+
+// Pagination config
+const POSTS_PER_PAGE = 20;
+let lastVisiblePost = null;
+let isLoadingMore = false;
+let hasMorePosts = true;
 
 // Load Firestore if in Firebase mode
 async function initFirestore() {
@@ -35,6 +44,8 @@ async function initFirestore() {
         setDoc = firestore.setDoc;
         arrayUnion = firestore.arrayUnion;
         arrayRemove = firestore.arrayRemove;
+        startAfter = firestore.startAfter;
+        increment = firestore.increment;
 
         firestoreReady = true;
         console.log('🔥 Firestore mode enabled - Posts will sync in real-time');
@@ -47,12 +58,12 @@ async function initFirestore() {
 
 document.addEventListener('DOMContentLoaded', async () => {
     // ==================== CHECK AUTH ====================
-    // We treat any logged-in user (Firebase) as valid
+    // First check localStorage for quick UI render
     const demoUser = JSON.parse(localStorage.getItem('rayo_demo_user') || 'null');
 
-    // Safety check - if no user, redirect to login
+    // Quick check - if no localStorage user, redirect immediately
     if (!demoUser || !demoUser.uid) {
-        console.warn('No user found, redirecting to login');
+        console.warn('No user found in localStorage, redirecting to login');
         window.location.href = 'login.html';
         return;
     }
@@ -60,6 +71,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize icons immediately to avoid visual glitches
     if (window.lucide) {
         window.lucide.createIcons();
+    }
+
+    // ==================== VERIFY FIREBASE AUTH STATE ====================
+    // Import and verify real Firebase auth state
+    try {
+        const { auth, onAuthChange } = await import('./firebase-config.js');
+
+        // Verify that Firebase auth matches localStorage
+        onAuthChange((firebaseUser) => {
+            if (!firebaseUser) {
+                // Firebase says no user - localStorage is stale, clean up and redirect
+                console.warn('Firebase auth invalid, cleaning up and redirecting');
+                localStorage.removeItem('rayo_demo_mode');
+                localStorage.removeItem('rayo_demo_user');
+                localStorage.removeItem('rayo_firebase_user');
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Optionally sync localStorage with latest Firebase data
+            const storedUser = JSON.parse(localStorage.getItem('rayo_demo_user') || '{}');
+            if (storedUser.uid !== firebaseUser.uid) {
+                // Mismatch - update localStorage with real Firebase user
+                localStorage.setItem('rayo_demo_user', JSON.stringify({
+                    uid: firebaseUser.uid,
+                    displayName: firebaseUser.displayName || storedUser.displayName,
+                    username: storedUser.username || firebaseUser.email?.split('@')[0],
+                    photoURL: firebaseUser.photoURL || storedUser.photoURL,
+                    email: firebaseUser.email
+                }));
+            }
+        });
+    } catch (err) {
+        console.warn('Could not verify Firebase auth state:', err.message);
     }
 
     // ==================== INITIALIZE APP ====================
@@ -117,11 +162,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ==================== FIRESTORE POSTS ====================
+    let lastVisibleDoc = null; // For pagination
+
     function subscribeToFirestorePosts() {
         const q = query(
             collection(db, "posts"),
             orderBy("createdAt", "desc"),
-            limit(50)
+            limit(POSTS_PER_PAGE)
         );
 
         unsubscribePosts = onSnapshot(q, (snapshot) => {
@@ -134,17 +181,126 @@ document.addEventListener('DOMContentLoaded', async () => {
                     createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now()
                 });
             });
+
+            // Save last document for pagination
+            if (snapshot.docs.length > 0) {
+                lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+                hasMorePosts = snapshot.docs.length === POSTS_PER_PAGE;
+            } else {
+                hasMorePosts = false;
+            }
+
             currentFirestorePosts = posts;
             renderPosts(posts);
+
+            // Setup infinite scroll after first load
+            setupInfiniteScroll();
         }, (error) => {
             console.error('Error subscribing to posts:', error);
         });
     }
 
+    // Load more posts for infinite scroll
+    async function loadMorePosts() {
+        if (!lastVisibleDoc || isLoadingMore || !hasMorePosts) return;
+
+        isLoadingMore = true;
+        const loader = document.getElementById('loader');
+        if (loader) loader.style.display = 'block';
+
+        try {
+            const q = query(
+                collection(db, "posts"),
+                orderBy("createdAt", "desc"),
+                startAfter(lastVisibleDoc),
+                limit(POSTS_PER_PAGE)
+            );
+
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                hasMorePosts = false;
+                if (loader) loader.style.display = 'none';
+                isLoadingMore = false;
+                return;
+            }
+
+            const newPosts = [];
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                newPosts.push({
+                    id: docSnap.id,
+                    ...data,
+                    createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now()
+                });
+            });
+
+            // Update last visible for next pagination
+            lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+            hasMorePosts = snapshot.docs.length === POSTS_PER_PAGE;
+
+            // Append to current posts
+            currentFirestorePosts = [...currentFirestorePosts, ...newPosts];
+
+            // Append to DOM (don't re-render all)
+            const container = document.getElementById('posts-container');
+            newPosts.forEach(post => {
+                container.appendChild(createPostElement(post));
+            });
+            lucide.createIcons();
+
+        } catch (error) {
+            console.error('Error loading more posts:', error);
+        } finally {
+            if (loader) loader.style.display = 'none';
+            isLoadingMore = false;
+        }
+    }
+
+    // Setup intersection observer for infinite scroll
+    function setupInfiniteScroll() {
+        const loader = document.getElementById('loader');
+        if (!loader) return;
+
+        const observer = new IntersectionObserver((entries) => {
+            if (entries[0].isIntersecting && hasMorePosts && !isLoadingMore) {
+                loadMorePosts();
+            }
+        }, { threshold: 0.1 });
+
+        observer.observe(loader);
+    }
+
     // ==================== FIRESTORE OPERATIONS ====================
 
     async function createFirestorePost(content, imageUrl = null) {
+        // Validate content length
+        if (!content || content.trim().length === 0) {
+            showToast('El post no puede estar vacío');
+            return;
+        }
+
+        if (content.length > 500) {
+            showToast('El post es muy largo (máx 500 caracteres)');
+            return;
+        }
+
         try {
+            // Check rate limit (optional - can also rely on Firestore Rules)
+            const rateLimitRef = doc(db, "rateLimits", currentUser.uid, "posts", "limit");
+            const rateLimitSnap = await getDoc(rateLimitRef);
+
+            if (rateLimitSnap.exists()) {
+                const lastPost = rateLimitSnap.data().lastAction?.toMillis() || 0;
+                const tenSecondsAgo = Date.now() - 10000;
+
+                if (lastPost > tenSecondsAgo) {
+                    const waitTime = Math.ceil((lastPost - tenSecondsAgo) / 1000);
+                    showToast(`Espera ${waitTime}s antes de publicar de nuevo`);
+                    return;
+                }
+            }
+
             const postData = {
                 authorId: currentUser.uid,
                 authorName: currentUser.displayName,
@@ -155,17 +311,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                 imageUrl: imageUrl,
                 likes: [],
                 reposts: [],
-                comments: [],
-                views: Math.floor(Math.random() * 100) + 10,
+                commentCount: 0,
+                views: 0, // Start at 0, not random
                 createdAt: serverTimestamp()
             };
 
             await addDoc(collection(db, "posts"), postData);
+
+            // Update rate limit timestamp
+            await setDoc(rateLimitRef, { lastAction: serverTimestamp() });
+
             showToast('¡Publicación creada!');
-            // Real-time subscription will automatically update the UI
         } catch (error) {
             console.error('Error creating post:', error);
-            showToast('Error al publicar. Intenta de nuevo.');
+            if (error.code === 'permission-denied') {
+                showToast('Espera unos segundos antes de publicar de nuevo');
+            } else {
+                showToast('Error al publicar. Intenta de nuevo.');
+            }
         }
     }
 
@@ -210,28 +373,56 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Add comment to subcollection (scalable)
     async function addFirestoreComment(postId, content) {
         try {
             const postRef = doc(db, "posts", postId);
+            const commentsRef = collection(db, "posts", postId, "comments");
 
-            const comment = {
-                id: 'comment-' + Date.now(),
+            const commentData = {
                 authorId: currentUser.uid,
                 authorName: currentUser.displayName,
                 authorUsername: currentUser.username,
                 authorPhoto: currentUser.photoURL,
                 content: content,
-                createdAt: Date.now()
+                createdAt: serverTimestamp()
             };
 
+            // Add to subcollection
+            const docRef = await addDoc(commentsRef, commentData);
+
+            // Increment counter on post document
             await updateDoc(postRef, {
-                comments: arrayUnion(comment)
+                commentCount: increment(1)
             });
 
-            return comment;
+            return { id: docRef.id, ...commentData, createdAt: Date.now() };
         } catch (error) {
             console.error('Error adding comment:', error);
             return null;
+        }
+    }
+
+    // Load comments from subcollection
+    async function loadCommentsForPost(postId) {
+        try {
+            const commentsRef = collection(db, "posts", postId, "comments");
+            const q = query(commentsRef, orderBy("createdAt", "asc"), limit(50));
+            const snapshot = await getDocs(q);
+
+            const comments = [];
+            snapshot.forEach(docSnap => {
+                const data = docSnap.data();
+                comments.push({
+                    id: docSnap.id,
+                    ...data,
+                    createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now()
+                });
+            });
+            return comments;
+        } catch (error) {
+            console.error('Error loading comments:', error);
+            return [];
         }
     }
 
@@ -435,7 +626,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const timeAgo = getTimeAgo(post.createdAt);
         const isLiked = post.likes.includes(currentUser.uid);
         const likeCount = post.likes.length;
-        const commentCount = Array.isArray(post.comments) ? post.comments.length : post.comments;
+        // Use commentCount (number) for scalability instead of comments array
+        const commentCount = typeof post.commentCount === 'number' ? post.commentCount : 0;
 
         // Sanitize user-generated content to prevent XSS
         const safeName = sanitizeHTML(post.authorName);
@@ -498,14 +690,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return article;
     }
 
-    // ==================== SECURITY: HTML SANITIZATION ====================
-    // Prevent XSS attacks by escaping HTML characters
-    function sanitizeHTML(str) {
-        if (!str) return '';
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
-    }
+    // ==================== CONTENT FORMATTING ====================
+    // Note: sanitizeHTML, safeText, getTimeAgo, formatNumber are imported from utils.js
 
     function formatContent(content) {
         // First, sanitize to prevent XSS attacks
@@ -518,32 +704,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         return formatted;
     }
 
-    // Safe text for attributes (user names, etc)
-    function safeText(str) {
-        if (!str) return '';
-        return sanitizeHTML(str);
-    }
-
-    function getTimeAgo(timestamp) {
-        const seconds = Math.floor((Date.now() - timestamp) / 1000);
-        if (seconds < 60) return 'ahora';
-        if (seconds < 3600) return Math.floor(seconds / 60) + 'm';
-        if (seconds < 86400) return Math.floor(seconds / 3600) + 'h';
-        if (seconds < 604800) return Math.floor(seconds / 86400) + 'd';
-        const date = new Date(timestamp);
-        return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
-    }
-
-    function formatNumber(num) {
-        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-        if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-        return num.toString();
-    }
-
     // ==================== COMMENTS ====================
-    function openCommentModal(postId) {
+    async function openCommentModal(postId) {
         selectedPostId = postId;
-        const post = currentFirestorePosts.find(p => p.id === postId); // Use global Firestore posts
+        const post = currentFirestorePosts.find(p => p.id === postId);
         if (!post) return;
 
         const modal = document.getElementById('comment-modal-overlay');
@@ -553,8 +717,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         container.innerHTML = '';
         container.appendChild(createPostElement(post));
 
+        // Show loading state
+        commentsContainer.innerHTML = '<div class="loading-comments"><i data-lucide="loader-2" class="spin"></i> Cargando...</div>';
+        lucide.createIcons();
+
+        // Load comments from subcollection
+        const comments = await loadCommentsForPost(postId);
         commentsContainer.innerHTML = '';
-        const comments = Array.isArray(post.comments) ? post.comments : [];
 
         if (comments.length === 0) {
             commentsContainer.innerHTML = '<div class="no-comments">Sé el primero en comentar</div>';
@@ -943,13 +1112,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             uploadStatus.className = 'edit-upload-status uploading';
 
             try {
-                // Upload to Cloudinary
+                // Upload to Cloudinary (using env vars from utils.js)
                 const formData = new FormData();
                 formData.append('file', file);
-                formData.append('upload_preset', 'rayo_uploads');
-                formData.append('cloud_name', 'dratkmkeh');
+                formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+                formData.append('cloud_name', cloudinaryConfig.cloudName);
 
-                const response = await fetch('https://api.cloudinary.com/v1_1/dratkmkeh/image/upload', {
+                const response = await fetch(getCloudinaryUploadUrl(), {
                     method: 'POST',
                     body: formData
                 });
@@ -1399,10 +1568,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
     // Navigation
-    document.getElementById('nav-logout').addEventListener('click', (e) => {
+    document.getElementById('nav-logout').addEventListener('click', async (e) => {
         e.preventDefault();
+
+        // Sign out from Firebase Auth properly
+        try {
+            const { auth } = await import('./firebase-config.js');
+            const { signOut } = await import('firebase/auth');
+            await signOut(auth);
+        } catch (err) {
+            console.error('Error signing out from Firebase:', err);
+        }
+
+        // Clean up Firestore subscription
+        if (unsubscribePosts) {
+            unsubscribePosts();
+        }
+
+        // Clear all local storage
         localStorage.removeItem('rayo_demo_mode');
         localStorage.removeItem('rayo_demo_user');
+        localStorage.removeItem('rayo_firebase_user');
         window.location.href = 'login.html';
     });
 
