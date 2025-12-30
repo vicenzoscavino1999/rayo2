@@ -22,6 +22,18 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isOwner(userId);
       allow update: if isAuthenticated() && isOwner(userId);
       allow delete: if false; // Users cannot be deleted
+      
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        // Only the owner can read their notifications
+        allow read: if isAuthenticated() && isOwner(userId);
+        // Any authenticated user can create notifications for others
+        allow create: if isAuthenticated();
+        // Only owner can update (mark as read)
+        allow update: if isAuthenticated() && isOwner(userId);
+        // Owner can delete their notifications
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
     }
     
     // Posts collection
