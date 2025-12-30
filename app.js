@@ -58,11 +58,11 @@ import {
 // App state
 let currentUser = null;
 let currentView = 'feed';
-let pendingImageData = null;
+let pendingMedia = null; // { data: string, type: 'image' | 'video' }
 
-// Get/Set pending image
-function getPendingImage() { return pendingImageData; }
-function setPendingImage(data) { pendingImageData = data; }
+// Get/Set pending media
+function getPendingMedia() { return pendingMedia; }
+function setPendingMedia(data) { pendingMedia = data; }
 
 document.addEventListener('DOMContentLoaded', async () => {
     // ==================== CHECK AUTH ====================
@@ -203,21 +203,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     // ==================== SETUP UI ====================
     // Composer
     setupComposer(
-        (content, image) => {
-            createFirestorePost(content, image);
+        (content, media) => {
+            if (media) {
+                createFirestorePost(content, media.data, media.type);
+            } else {
+                createFirestorePost(content, null, 'image');
+            }
         },
         handleImageUpload,
-        getPendingImage,
-        setPendingImage
+        getPendingMedia,
+        setPendingMedia
     );
 
     // Modal
     setupPostModal(
-        (content, image) => {
-            createFirestorePost(content, image);
+        (content, media) => {
+            if (media) {
+                createFirestorePost(content, media.data, media.type);
+            } else {
+                createFirestorePost(content, null, 'image');
+            }
         },
-        getPendingImage,
-        setPendingImage
+        getPendingMedia,
+        setPendingMedia
     );
 
     // Tab switching

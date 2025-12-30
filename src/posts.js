@@ -181,7 +181,7 @@ export function setupInfiniteScroll(createPostElement) {
 }
 
 // Create a new post
-export async function createFirestorePost(content, imageUrl = null) {
+export async function createFirestorePost(content, mediaUrl = null, mediaType = 'image') {
     if (!content || content.trim().length === 0) {
         onToast?.('El post no puede estar vacío');
         return false;
@@ -215,7 +215,10 @@ export async function createFirestorePost(content, imageUrl = null) {
             authorPhoto: currentUser.photoURL,
             verified: false,
             content: content,
-            imageUrl: imageUrl,
+            mediaUrl: mediaUrl,
+            mediaType: mediaType, // 'image' or 'video'
+            // Keep imageUrl for backward compatibility
+            imageUrl: mediaType === 'image' ? mediaUrl : null,
             likes: [],
             reposts: [],
             commentCount: 0,
@@ -334,17 +337,38 @@ export function createPostElement(post) {
     }
 
     let mediaHtml = '';
-    if (post.imageUrl) {
-        const safeImageUrl = post.imageUrl.startsWith('data:image/') ||
-            post.imageUrl.startsWith('https://') ||
-            post.imageUrl.startsWith('http://')
-            ? post.imageUrl : '';
-        if (safeImageUrl) {
-            mediaHtml = `
-                <div class="post-media">
-                    <img src="${safeImageUrl}" alt="Post image">
-                </div>
-            `;
+    // Support both new mediaUrl/mediaType and legacy imageUrl
+    const mediaUrl = post.mediaUrl || post.imageUrl;
+    const mediaType = post.mediaType || 'image';
+
+    if (mediaUrl) {
+        const safeMediaUrl = mediaUrl.startsWith('data:') ||
+            mediaUrl.startsWith('https://') ||
+            mediaUrl.startsWith('http://')
+            ? mediaUrl : '';
+
+        if (safeMediaUrl) {
+            if (mediaType === 'video') {
+                mediaHtml = `
+                    <div class="post-media post-video">
+                        <video 
+                            src="${safeMediaUrl}" 
+                            controls 
+                            playsinline
+                            preload="metadata"
+                            class="post-video-player"
+                        >
+                            Tu navegador no soporta videos.
+                        </video>
+                    </div>
+                `;
+            } else {
+                mediaHtml = `
+                    <div class="post-media">
+                        <img src="${safeMediaUrl}" alt="Post image">
+                    </div>
+                `;
+            }
         }
     }
 
@@ -392,41 +416,105 @@ export function formatContent(content) {
     return formatted;
 }
 
-// Handle image upload preview
-export function handleImageUpload(file, previewContainer, removeCallback, setPendingImage) {
-    if (!file || !file.type.startsWith('image/')) {
-        onToast?.('Por favor selecciona una imagen válida');
+// Handle media upload preview (images and videos)
+export function handleMediaUpload(file, previewContainer, removeCallback, setPendingMedia) {
+    if (!file) {
+        onToast?.('Por favor selecciona un archivo');
         return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+
+    if (!isImage && !isVideo) {
+        onToast?.('Formato no soportado. Usa imágenes o videos.');
+        return;
+    }
+
+    // Size limits
+    const maxImageSize = 5 * 1024 * 1024; // 5MB for images
+    const maxVideoSize = 15 * 1024 * 1024; // 15MB for videos
+
+    if (isImage && file.size > maxImageSize) {
         onToast?.('La imagen es muy grande (máx 5MB)');
         return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const imageData = e.target.result;
-        setPendingImage(imageData);
+    if (isVideo && file.size > maxVideoSize) {
+        onToast?.('El video es muy grande (máx 15MB)');
+        return;
+    }
 
-        previewContainer.innerHTML = `
-            <div class="image-preview">
-                <img src="${imageData}" alt="Preview">
-                <button class="remove-image-btn" type="button"><i data-lucide="x"></i></button>
-            </div>
-        `;
-        previewContainer.style.display = 'block';
+    if (isVideo) {
+        // For videos, create object URL for preview
+        const videoUrl = URL.createObjectURL(file);
 
-        if (window.lucide) {
-            window.lucide.createIcons();
-        }
+        // Create a temporary video element to check duration
+        const tempVideo = document.createElement('video');
+        tempVideo.preload = 'metadata';
+        tempVideo.src = videoUrl;
 
-        previewContainer.querySelector('.remove-image-btn').addEventListener('click', () => {
-            setPendingImage(null);
-            previewContainer.innerHTML = '';
-            previewContainer.style.display = 'none';
-            if (removeCallback) removeCallback();
-        });
-    };
-    reader.readAsDataURL(file);
+        tempVideo.onloadedmetadata = () => {
+            URL.revokeObjectURL(tempVideo.src);
+
+            if (tempVideo.duration > 15) {
+                onToast?.('El video debe ser de máximo 15 segundos');
+                return;
+            }
+
+            // Video is valid, proceed with upload
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const videoData = e.target.result;
+                setPendingMedia({ data: videoData, type: 'video' });
+
+                previewContainer.innerHTML = `
+                    <div class="video-preview">
+                        <video src="${videoData}" controls muted class="preview-video"></video>
+                        <button class="remove-media-btn" type="button"><i data-lucide="x"></i></button>
+                        <span class="video-badge"><i data-lucide="video"></i> Video</span>
+                    </div>
+                `;
+                previewContainer.style.display = 'block';
+
+                if (window.lucide) window.lucide.createIcons();
+
+                previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
+                    setPendingMedia(null);
+                    previewContainer.innerHTML = '';
+                    previewContainer.style.display = 'none';
+                    if (removeCallback) removeCallback();
+                });
+            };
+            reader.readAsDataURL(file);
+        };
+    } else {
+        // Handle image upload
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const imageData = e.target.result;
+            setPendingMedia({ data: imageData, type: 'image' });
+
+            previewContainer.innerHTML = `
+                <div class="image-preview">
+                    <img src="${imageData}" alt="Preview">
+                    <button class="remove-media-btn" type="button"><i data-lucide="x"></i></button>
+                </div>
+            `;
+            previewContainer.style.display = 'block';
+
+            if (window.lucide) window.lucide.createIcons();
+
+            previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
+                setPendingMedia(null);
+                previewContainer.innerHTML = '';
+                previewContainer.style.display = 'none';
+                if (removeCallback) removeCallback();
+            });
+        };
+        reader.readAsDataURL(file);
+    }
 }
+
+// Legacy alias for backward compatibility
+export const handleImageUpload = handleMediaUpload;

@@ -117,19 +117,19 @@ export function setupComposer(createPostCallback, handleImageUpload, getPendingI
         textarea.style.height = textarea.scrollHeight + 'px';
     });
 
-    // Image upload button
+    // Media upload button (images and videos)
     const composerImageBtn = document.querySelector('.composer .action-icons i[data-lucide="image"]');
     if (composerImageBtn) {
         composerImageBtn.addEventListener('click', () => {
             const input = document.createElement('input');
             input.type = 'file';
-            input.accept = 'image/*';
+            input.accept = 'image/*,video/*'; // Accept both images and videos
             input.onchange = (e) => {
                 const file = e.target.files[0];
-                let previewContainer = document.querySelector('.composer .image-preview-container');
+                let previewContainer = document.querySelector('.composer .media-preview-container');
                 if (!previewContainer) {
                     previewContainer = document.createElement('div');
-                    previewContainer.className = 'image-preview-container';
+                    previewContainer.className = 'media-preview-container';
                     document.querySelector('.composer-content')?.insertBefore(previewContainer, document.querySelector('.composer-actions'));
                 }
                 handleImageUpload(file, previewContainer, () => {
@@ -149,7 +149,7 @@ export function setupComposer(createPostCallback, handleImageUpload, getPendingI
         }
         if (btnPost) btnPost.disabled = true;
         setPendingImage(null);
-        const previewContainer = document.querySelector('.composer .image-preview-container');
+        const previewContainer = document.querySelector('.composer .media-preview-container');
         if (previewContainer) {
             previewContainer.innerHTML = '';
             previewContainer.style.display = 'none';
