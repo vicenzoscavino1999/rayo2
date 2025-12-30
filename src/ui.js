@@ -118,7 +118,7 @@ export function setupComposer(createPostCallback, handleImageUpload, getPendingI
     });
 
     // Media upload button (images and videos)
-    const composerImageBtn = document.querySelector('.composer .action-icons i[data-lucide="image"]');
+    const composerImageBtn = document.getElementById('composer-image-btn');
     if (composerImageBtn) {
         composerImageBtn.addEventListener('click', () => {
             const input = document.createElement('input');
@@ -138,6 +138,111 @@ export function setupComposer(createPostCallback, handleImageUpload, getPendingI
                 if (btnPost) btnPost.disabled = false;
             };
             input.click();
+        });
+    }
+
+    // Emoji Picker (Simple)
+    const composerEmojiBtn = document.getElementById('composer-emoji-btn');
+    if (composerEmojiBtn) {
+        const commonEmojis = ['😊', '😂', '❤️', '🔥', '👍', '🎉', '🌟', '👀', '🤔', '😭', '🙌', '🚀', '😍', '✨', '💯', '💩'];
+        let picker = null;
+
+        composerEmojiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (picker) {
+                picker.remove();
+                picker = null;
+                return;
+            }
+
+            picker = document.createElement('div');
+            picker.className = 'emoji-picker-popover';
+            picker.style.cssText = `
+                position: absolute;
+                top: 40px;
+                left: 0;
+                background: var(--bg-primary);
+                border: 1px solid var(--border);
+                border-radius: 12px;
+                padding: 10px;
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                gap: 8px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                z-index: 100;
+            `;
+
+            commonEmojis.forEach(emoji => {
+                const span = document.createElement('span');
+                span.textContent = emoji;
+                span.style.cssText = 'cursor: pointer; font-size: 20px; padding: 4px; text-align: center; user-select: none;';
+                span.onmouseover = () => span.style.backgroundColor = 'var(--bg-secondary)';
+                span.onmouseout = () => span.style.backgroundColor = 'transparent';
+
+                span.onclick = () => {
+                    if (textarea) {
+                        const start = textarea.selectionStart;
+                        const end = textarea.selectionEnd;
+                        const text = textarea.value;
+                        textarea.value = text.substring(0, start) + emoji + text.substring(end);
+                        textarea.selectionStart = textarea.selectionEnd = start + emoji.length;
+                        textarea.focus();
+                        textarea.dispatchEvent(new Event('input')); // Trigger input event to update btn state
+                    }
+                    picker.remove();
+                    picker = null;
+                };
+                picker.appendChild(span);
+            });
+
+            // Append relative to the button container
+            composerEmojiBtn.parentElement.style.position = 'relative';
+            composerEmojiBtn.parentElement.appendChild(picker);
+
+            // Close on click outside
+            const closePicker = (evt) => {
+                if (picker && !picker.contains(evt.target) && evt.target !== composerEmojiBtn) {
+                    picker.remove();
+                    picker = null;
+                    document.removeEventListener('click', closePicker);
+                }
+            };
+            setTimeout(() => document.addEventListener('click', closePicker), 0);
+        });
+    }
+
+    // Location Picker
+    const composerLocationBtn = document.getElementById('composer-location-btn');
+    if (composerLocationBtn) {
+        composerLocationBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                showToast('Geolocalización no soportada');
+                return;
+            }
+
+            composerLocationBtn.style.color = 'var(--primary)';
+            showToast('Obteniendo ubicación...');
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    // Just appending a text representation for now
+                    // Ideally we would store this in specific fields, but kept simple for this iteration
+                    const { latitude, longitude } = position.coords;
+                    const locationText = ` 📍 [${latitude.toFixed(2)}, ${longitude.toFixed(2)}]`;
+
+                    if (textarea) {
+                        textarea.value = textarea.value + locationText;
+                        textarea.dispatchEvent(new Event('input'));
+                    }
+                    showToast('Ubicación agregada');
+                    composerLocationBtn.style.color = '';
+                },
+                (error) => {
+                    console.error('Error location:', error);
+                    showToast('Error al obtener ubicación');
+                    composerLocationBtn.style.color = '';
+                }
+            );
         });
     }
 
