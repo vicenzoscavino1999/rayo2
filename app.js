@@ -14,6 +14,7 @@ import {
     getCurrentPosts,
     setupInfiniteScroll,
     handleImageUpload,
+    setNewsElementCreator,
     updateCurrentUser as updatePostsUser
 } from './src/posts.js';
 
@@ -54,6 +55,12 @@ import {
     initExploreModule,
     showExplore
 } from './src/explore.js';
+
+import {
+    fetchNews,
+    createNewsElement,
+    getCachedNews
+} from './src/news.js';
 
 // App state
 let currentUser = null;
@@ -119,6 +126,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     updateUserUI(currentUser);
 
     // ==================== INITIALIZE MODULES ====================
+    let newsData = [];
+
     try {
         await initPostsModule(currentUser, showToast);
         await initCommentsModule(currentUser, showToast);
@@ -126,15 +135,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initExploreModule(showToast, showProfile);
         await initNotificationsModule(currentUser);
 
+        // Set up news element creator for posts module
+        setNewsElementCreator(createNewsElement);
+
+        // Fetch news for "Para ti" tab
+        newsData = await fetchNews();
+        console.log(`📰 Loaded ${newsData.length} news items`);
+
         // Subscribe to posts
         subscribeToFirestorePosts((posts) => {
             if (currentView === 'feed') {
-                renderPosts(posts, null, false, createPostElement);
+                renderPosts(posts, null, false, createPostElement, newsData);
                 setupInfiniteScroll(createPostElement);
             }
         });
 
-        console.log('🔥 Rayo initialized with modular architecture');
+        console.log('🔥 Rayo initialized with modular architecture + news feed');
     } catch (err) {
         console.error('Failed to initialize modules:', err);
         showToast('Error al inicializar la aplicación');

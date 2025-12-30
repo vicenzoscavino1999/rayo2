@@ -285,8 +285,8 @@ export async function deleteFirestorePost(postId) {
     }
 }
 
-// Render posts to container
-export function renderPosts(posts, filterUserId = null, filterFollowing = false, createPostElement) {
+// Render posts to container (with optional news integration)
+export function renderPosts(posts, filterUserId = null, filterFollowing = false, createPostElement, news = []) {
     const container = document.getElementById('posts-container');
     container.innerHTML = '';
 
@@ -303,17 +303,50 @@ export function renderPosts(posts, filterUserId = null, filterFollowing = false,
 
     filteredPosts.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
-    if (filteredPosts.length === 0) {
+    // If not filtering and we have news, mix them in
+    const showNews = !filterFollowing && !filterUserId && news.length > 0;
+
+    if (filteredPosts.length === 0 && !showNews) {
         container.innerHTML = '<div class="empty-state"><p>No hay publicaciones aún</p></div>';
     } else {
-        filteredPosts.forEach(post => {
-            container.appendChild(createPostElement(post));
-        });
+        // Mix news with posts for "Para ti" tab
+        if (showNews) {
+            let newsIndex = 0;
+            const newsInterval = Math.max(2, Math.floor(filteredPosts.length / news.length) || 2);
+
+            filteredPosts.forEach((post, index) => {
+                container.appendChild(createPostElement(post));
+
+                // Insert a news item every few posts
+                if (newsIndex < news.length && (index + 1) % newsInterval === 0) {
+                    const newsEl = createNewsElement(news[newsIndex]);
+                    container.appendChild(newsEl);
+                    newsIndex++;
+                }
+            });
+
+            // Add remaining news at the end
+            while (newsIndex < news.length) {
+                const newsEl = createNewsElement(news[newsIndex]);
+                container.appendChild(newsEl);
+                newsIndex++;
+            }
+        } else {
+            filteredPosts.forEach(post => {
+                container.appendChild(createPostElement(post));
+            });
+        }
     }
 
     if (window.lucide) {
         window.lucide.createIcons();
     }
+}
+
+// Import createNewsElement for use in renderPosts
+let createNewsElement = null;
+export function setNewsElementCreator(creator) {
+    createNewsElement = creator;
 }
 
 // Create post HTML element

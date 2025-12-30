@@ -516,6 +516,123 @@ body {
     fill: var(--like);
 }
 
+/* NEWS CARDS */
+.news-post {
+    position: relative;
+    background: linear-gradient(135deg, rgba(29, 155, 240, 0.03) 0%, transparent 50%);
+    border-left: 3px solid var(--primary);
+}
+
+.news-badge {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.news-badge.tech {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.news-badge.entertainment {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+}
+
+.news-badge i {
+    width: 12px;
+    height: 12px;
+}
+
+.news-source-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary) 0%, #667eea 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.news-source-avatar i {
+    color: white;
+    width: 20px;
+    height: 20px;
+}
+
+.news-source {
+    color: var(--primary) !important;
+    font-weight: 700 !important;
+}
+
+.news-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 8px 0;
+    line-height: 1.3;
+}
+
+.news-description {
+    font-size: 14px;
+    color: var(--text-muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.news-media {
+    margin-top: 12px;
+}
+
+.news-media img {
+    width: 100%;
+    max-height: 250px;
+    object-fit: cover;
+    border-radius: 12px;
+}
+
+.news-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    max-width: 100%;
+}
+
+.news-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 8px 16px;
+    border-radius: 20px;
+    background: var(--primary-soft);
+    transition: all 0.2s;
+}
+
+.news-link:hover {
+    background: var(--primary);
+    color: white;
+}
+
+.news-link i {
+    width: 14px;
+    height: 14px;
+}
+
 /* EXTRAS SIDEBAR */
 .extras {
     width: var(--extras-width);
