@@ -102,7 +102,7 @@ function getFallbackNews() {
             description: 'Las herramientas de inteligencia artificial están revolucionando la forma en que los desarrolladores escriben código.',
             imageUrl: 'https://images.unsplash.com/photo-1677442136019-21780ecad995?w=400',
             source: 'Tech News',
-            url: '#',
+            url: 'https://www.theverge.com/ai-artificial-intelligence',
             publishedAt: Date.now() - 3600000
         },
         {
@@ -113,7 +113,7 @@ function getFallbackNews() {
             description: 'Las principales plataformas anuncian sus estrenos más esperados para este mes.',
             imageUrl: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=400',
             source: 'Entertainment Daily',
-            url: '#',
+            url: 'https://www.netflix.com/browse/new-releases',
             publishedAt: Date.now() - 7200000
         },
         {
@@ -124,7 +124,7 @@ function getFallbackNews() {
             description: 'La compañía presenta actualizaciones importantes para su sistema operativo móvil.',
             imageUrl: 'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=400',
             source: 'Apple News',
-            url: '#',
+            url: 'https://www.apple.com/newsroom/',
             publishedAt: Date.now() - 10800000
         },
         {
@@ -135,7 +135,7 @@ function getFallbackNews() {
             description: 'La industria de los videojuegos se prepara para lanzamientos históricos.',
             imageUrl: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?w=400',
             source: 'Gaming World',
-            url: '#',
+            url: 'https://www.ign.com/upcoming',
             publishedAt: Date.now() - 14400000
         },
         {
@@ -146,7 +146,7 @@ function getFallbackNews() {
             description: 'Expertos analizan hacia dónde se dirigen las plataformas sociales en 2025.',
             imageUrl: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400',
             source: 'Social Media Today',
-            url: '#',
+            url: 'https://www.socialmediatoday.com/',
             publishedAt: Date.now() - 18000000
         }
     ];
