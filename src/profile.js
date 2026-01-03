@@ -1,7 +1,7 @@
 // src/profile.js - Profile display and editing
 // Rayo Social Network - Modularized
 
-import { cloudinaryConfig, getCloudinaryUploadUrl } from '../utils.js';
+import { cloudinaryConfig, getCloudinaryUploadUrl, sanitizeHTML, safeUrl, safeAttr } from '../utils.js';
 
 // Module state
 let db, collection, getDocs, query, orderBy, where, doc, getDoc, updateDoc, limit, arrayUnion, arrayRemove;
@@ -94,7 +94,7 @@ export async function showProfile(userId) {
             <div class="profile-header-back">
                 <button class="btn-back" id="btn-back"><i data-lucide="arrow-left"></i></button>
                 <div class="profile-header-info">
-                    <span class="profile-header-name">${userInfo.displayName}</span>
+                    <span class="profile-header-name">${sanitizeHTML(userInfo.displayName)}</span>
                     <span class="profile-header-posts">${userPosts.length} posts</span>
                 </div>
             </div>
@@ -118,7 +118,7 @@ export async function showProfile(userId) {
         const isOwnProfile = currentUser && userId === currentUser.uid;
 
         const messageBtn = !isOwnProfile ?
-            `<button class="btn-message-profile" data-user-id="${userId}" data-username="${userInfo.username}" data-name="${userInfo.displayName}" data-photo="${userInfo.photoURL}"><i data-lucide="mail"></i></button>` : '';
+            `<button class="btn-message-profile" data-user-id="${userId}" data-username="${safeAttr(userInfo.username)}" data-name="${safeAttr(userInfo.displayName)}" data-photo="${safeUrl(userInfo.photoURL, '')}"><i data-lucide="mail"></i></button>` : '';
 
         const actionBtn = isOwnProfile ?
             '<button class="btn-edit-profile">Editar perfil</button>' :
@@ -131,13 +131,13 @@ export async function showProfile(userId) {
             <div class="profile-card">
                 <div class="profile-banner"></div>
                 <div class="profile-info">
-                    <img src="${userInfo.photoURL}" alt="${userInfo.displayName}" class="profile-avatar">
+                    <img src="${safeUrl(userInfo.photoURL, 'https://api.dicebear.com/7.x/avataaars/svg?seed=user')}" alt="${safeAttr(userInfo.displayName)}" class="profile-avatar">
                     <div class="profile-actions">
                         ${actionBtn}
                     </div>
-                    <h2 class="profile-name">${userInfo.displayName} ${verifiedIcon}</h2>
-                    <p class="profile-handle">@${userInfo.username}</p>
-                    <p class="profile-bio">${userInfo.bio}</p>
+                    <h2 class="profile-name">${sanitizeHTML(userInfo.displayName)} ${verifiedIcon}</h2>
+                    <p class="profile-handle">@${sanitizeHTML(userInfo.username)}</p>
+                    <p class="profile-bio">${sanitizeHTML(userInfo.bio)}</p>
                     <div class="profile-stats">
                         <span><strong>${followingCount}</strong> Siguiendo</span>
                         <span><strong>${followersCount}</strong> Seguidores</span>

@@ -2,7 +2,10 @@
 // Phase 1: Real-time messaging between users
 
 // Import shared utilities
-import { sanitizeHTML, getTimeAgo, formatDate, formatTime } from './utils.js';
+import { sanitizeHTML, getTimeAgo, formatDate, formatTime, safeUrl, safeAttr } from './utils.js';
+
+// Import session management (Firebase Auth as source of truth)
+import { requireCurrentUser, onSessionChange, logout } from './session.js';
 
 // Firebase imports
 import { db } from './firebase-config.js';
@@ -29,26 +32,33 @@ const isFirebaseMode = true;
 
 
 
-document.addEventListener('DOMContentLoaded', () => {
-    // ==================== CHECK AUTH ====================
-    const demoMode = localStorage.getItem('rayo_demo_mode');
-    const demoUser = JSON.parse(localStorage.getItem('rayo_demo_user') || 'null');
+document.addEventListener('DOMContentLoaded', async () => {
+    // ==================== CHECK AUTH (Firebase Auth as source of truth) ====================
+    const currentUser = await requireCurrentUser();
 
-    if (!demoMode || !demoUser) {
+    if (!currentUser) {
         window.location.href = 'login.html';
         return;
     }
 
     // ==================== INITIALIZE ====================
-    const currentUser = demoUser;
     let activeConversationId = null;
     let unsubscribeConversations = null;
     let unsubscribeMessages = null;
+    let unsubscribeAuth = null;
+
+    // Listen for auth changes (cross-tab logout)
+    unsubscribeAuth = onSessionChange(
+        null, // onLogin - we're already logged in
+        () => {
+            // onLogout - redirect to login
+            window.location.href = 'login.html';
+        }
+    );
 
     updateUserUI(currentUser);
 
-    // Load conversations based on mode
-    // Load conversations always form Firebase
+    // Load conversations always from Firebase
     subscribeToConversations();
     loadFirestoreUsersList();
 
@@ -116,10 +126,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const div = document.createElement('div');
             div.className = 'user-search-item';
             div.innerHTML = `
-                <img src="${user.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.username}" alt="${user.displayName}">
+                <img src="${safeUrl(user.photoURL, 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + user.username)}" alt="${safeAttr(user.displayName)}">
                 <div class="user-search-info">
-                    <span class="user-search-name">${user.displayName}</span>
-                    <span class="user-search-handle">@${user.username}</span>
+                    <span class="user-search-name">${sanitizeHTML(user.displayName)}</span>
+                    <span class="user-search-handle">@${sanitizeHTML(user.username)}</span>
                 </div>
             `;
 
@@ -222,13 +232,13 @@ document.addEventListener('DOMContentLoaded', () => {
             '';
 
         div.innerHTML = `
-            <img src="${otherUser.photoURL}" alt="${otherUser.displayName}" class="conversation-avatar">
+            <img src="${safeUrl(otherUser.photoURL, 'https://api.dicebear.com/7.x/avataaars/svg?seed=user')}" alt="${safeAttr(otherUser.displayName)}" class="conversation-avatar">
             <div class="conversation-info">
                 <div class="conversation-header">
-                    <span class="conversation-name">${otherUser.displayName}</span>
+                    <span class="conversation-name">${sanitizeHTML(otherUser.displayName)}</span>
                     <span class="conversation-time">${timeAgo}</span>
                 </div>
-                <div class="conversation-preview">${lastMessagePreview}</div>
+                <div class="conversation-preview">${sanitizeHTML(lastMessagePreview)}</div>
             </div>
         `;
 
@@ -538,16 +548,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Logout
-    document.getElementById('nav-logout').addEventListener('click', (e) => {
+    document.getElementById('nav-logout').addEventListener('click', async (e) => {
         e.preventDefault();
 
         // Cleanup subscriptions
         if (unsubscribeConversations) unsubscribeConversations();
         if (unsubscribeMessages) unsubscribeMessages();
+        if (unsubscribeAuth) unsubscribeAuth();
 
+        // Logout via session (Firebase signOut)
+        await logout();
+
+        // Clear legacy localStorage (cleanup only)
         localStorage.removeItem('rayo_demo_mode');
         localStorage.removeItem('rayo_demo_user');
         localStorage.removeItem('rayo_firebase_user');
+
         window.location.href = 'login.html';
     });
 

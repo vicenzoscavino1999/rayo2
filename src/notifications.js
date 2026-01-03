@@ -1,7 +1,7 @@
 // src/notifications.js - Notifications system with Firestore
 // Rayo Social Network - Real-time notifications
 
-import { getTimeAgo, sanitizeHTML } from '../utils.js';
+import { getTimeAgo, sanitizeHTML, safeUrl, safeAttr } from '../utils.js';
 
 // Module state  
 let db, collection, addDoc, getDocs, query, orderBy, limit,
@@ -100,6 +100,7 @@ export async function addNotification(type, fromUser, toUserId, postId = null) {
         const notificationData = {
             type: type,
             fromUserId: fromUser.uid || fromUser.authorId,
+            toUserId: toUserId, // Required for rules validation
             fromUserName: fromUser.displayName || fromUser.authorName,
             fromUserPhoto: fromUser.photoURL || fromUser.authorPhoto,
             fromUsername: fromUser.username || fromUser.authorUsername,
@@ -221,11 +222,11 @@ export function createNotificationElement(notif) {
     }
 
     const safeName = sanitizeHTML(notif.fromUserName || 'Usuario');
-    const safePhoto = sanitizeHTML(notif.fromUserPhoto || 'https://api.dicebear.com/7.x/avataaars/svg?seed=default');
+    const photoUrl = safeUrl(notif.fromUserPhoto, 'https://api.dicebear.com/7.x/avataaars/svg?seed=default');
 
     div.innerHTML = `
         ${icon}
-        <img src="${safePhoto}" alt="${safeName}" class="avatar-small">
+        <img src="${photoUrl}" alt="${safeAttr(notif.fromUserName || 'Usuario')}" class="avatar-small">
         <div class="notification-content">
             <span class="notification-user">${safeName}</span>
             <span class="notification-text">${text}</span>

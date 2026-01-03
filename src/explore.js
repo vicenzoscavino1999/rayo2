@@ -1,6 +1,8 @@
 // src/explore.js - User search and explore functionality
 // Rayo Social Network - Modularized
 
+import { sanitizeHTML } from '../utils.js';
+
 // Module state
 let db, collection, getDocs, query, limit;
 let onToast = null;
@@ -108,20 +110,43 @@ export async function showExplore() {
     }
 }
 
-// Create user card element
+// Create user card element - XSS Safe
 function createUserCard(userData, docId) {
     const userEl = document.createElement('div');
     userEl.className = 'explore-user-card';
-    userEl.innerHTML = `
-        <img src="${userData.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + userData.uid}" alt="${userData.displayName}" class="explore-avatar">
-        <div class="explore-user-info">
-            <span class="explore-name">${userData.displayName || 'Usuario'}</span>
-            <span class="explore-username">@${userData.username || 'usuario'}</span>
-        </div>
-        <div class="explore-action">
-            <i data-lucide="chevron-right"></i>
-        </div>
-    `;
+
+    // Avatar - validate URL format
+    const avatar = document.createElement('img');
+    const photoURL = userData.photoURL || 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + (userData.uid || docId);
+    avatar.src = photoURL.startsWith('http') || photoURL.startsWith('data:') ? photoURL : 'https://api.dicebear.com/7.x/avataaars/svg?seed=' + docId;
+    avatar.alt = sanitizeHTML(userData.displayName || 'Usuario');
+    avatar.className = 'explore-avatar';
+
+    // User info container
+    const info = document.createElement('div');
+    info.className = 'explore-user-info';
+
+    // Name - use textContent for safety
+    const name = document.createElement('span');
+    name.className = 'explore-name';
+    name.textContent = userData.displayName || 'Usuario';
+
+    // Username - use textContent for safety
+    const username = document.createElement('span');
+    username.className = 'explore-username';
+    username.textContent = '@' + (userData.username || 'usuario');
+
+    info.appendChild(name);
+    info.appendChild(username);
+
+    // Action icon
+    const action = document.createElement('div');
+    action.className = 'explore-action';
+    action.innerHTML = '<i data-lucide="chevron-right"></i>';
+
+    userEl.appendChild(avatar);
+    userEl.appendChild(info);
+    userEl.appendChild(action);
 
     userEl.addEventListener('click', () => {
         document.getElementById('explore-modal')?.remove();

@@ -73,15 +73,50 @@ export function formatTime(timestamp) {
     return date.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 }
 
+
 /**
- * Safe text for attributes (escapes special characters)
+ * Safe text for attributes (escapes quotes and special characters)
  * @param {string} str - The string to make safe
  * @returns {string} Safe string for use in attributes
  */
-export function safeText(str) {
+export function safeAttr(str) {
     if (!str) return '';
-    return sanitizeHTML(str);
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
 }
+
+/**
+ * Validate and sanitize URL for use in src/href attributes
+ * Only allows https://, http://, and valid data: URLs
+ * @param {string} url - The URL to validate
+ * @param {string} fallback - Fallback URL if invalid
+ * @returns {string} Safe URL or fallback
+ */
+export function safeUrl(url, fallback = '') {
+    if (!url || typeof url !== 'string') return fallback;
+
+    const trimmed = url.trim();
+
+    // Allow https and http URLs
+    if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+        return safeAttr(trimmed);
+    }
+
+    // Allow data: URLs only for images and videos
+    if (trimmed.startsWith('data:image/') || trimmed.startsWith('data:video/')) {
+        return trimmed; // data URLs are already encoded
+    }
+
+    // Everything else is rejected
+    return fallback;
+}
+
+// Legacy alias
+export const safeText = safeAttr;
 
 /**
  * Cloudinary configuration from environment variables

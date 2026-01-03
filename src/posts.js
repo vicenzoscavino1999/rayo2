@@ -1,7 +1,7 @@
 // src/posts.js - Posts CRUD, rendering, and Firestore operations
 // Rayo Social Network - Modularized
 
-import { sanitizeHTML, getTimeAgo, formatNumber } from '../utils.js';
+import { sanitizeHTML, getTimeAgo, formatNumber, cloudinaryConfig, isCloudinaryConfigured, safeUrl, safeAttr } from '../utils.js';
 
 // Module state
 let db, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot,
@@ -181,7 +181,7 @@ export function setupInfiniteScroll(createPostElement) {
 }
 
 // Create a new post
-export async function createFirestorePost(content, mediaUrl = null, mediaType = 'image') {
+export async function createFirestorePost(content, mediaData = null, mediaType = 'image') {
     if (!content || content.trim().length === 0) {
         onToast?.('El post no puede estar vacío');
         return false;
@@ -205,6 +205,29 @@ export async function createFirestorePost(content, mediaUrl = null, mediaType = 
                 const waitTime = Math.ceil((lastPost - tenSecondsAgo) / 1000);
                 onToast?.(`Espera ${waitTime}s antes de publicar de nuevo`);
                 return false;
+            }
+        }
+
+        // Upload media to Cloudinary if provided (file or already a URL)
+        let mediaUrl = null;
+        if (mediaData) {
+            // If it's already a URL (starts with http), use it directly
+            if (typeof mediaData === 'string' && (mediaData.startsWith('http://') || mediaData.startsWith('https://'))) {
+                mediaUrl = mediaData;
+            }
+            // If it's a File object, upload to Cloudinary
+            else if (mediaData instanceof File) {
+                onToast?.('Subiendo media...');
+                mediaUrl = await uploadToCloudinary(mediaData, mediaType);
+                if (!mediaUrl) {
+                    onToast?.('Error al subir media. Intenta de nuevo.');
+                    return false;
+                }
+            }
+            // If it's a data URL (base64), still accept for backward compatibility but warn
+            else if (typeof mediaData === 'string' && mediaData.startsWith('data:')) {
+                console.warn('Using base64 data URL - consider migrating to Cloudinary upload');
+                mediaUrl = mediaData;
             }
         }
 
@@ -239,6 +262,40 @@ export async function createFirestorePost(content, mediaUrl = null, mediaType = 
             onToast?.('Error al publicar. Intenta de nuevo.');
         }
         return false;
+    }
+}
+
+// Upload media to Cloudinary
+async function uploadToCloudinary(file, mediaType = 'image') {
+    if (!isCloudinaryConfigured()) {
+        console.error('Cloudinary not configured');
+        return null;
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('upload_preset', cloudinaryConfig.uploadPreset);
+        formData.append('cloud_name', cloudinaryConfig.cloudName);
+
+        // Use different endpoint for video vs image
+        const resourceType = mediaType === 'video' ? 'video' : 'image';
+        const endpoint = `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/${resourceType}/upload`;
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data.secure_url;
+    } catch (error) {
+        console.error('Cloudinary upload error:', error);
+        return null;
     }
 }
 
@@ -375,10 +432,8 @@ export function createPostElement(post) {
     const mediaType = post.mediaType || 'image';
 
     if (mediaUrl) {
-        const safeMediaUrl = mediaUrl.startsWith('data:') ||
-            mediaUrl.startsWith('https://') ||
-            mediaUrl.startsWith('http://')
-            ? mediaUrl : '';
+        // Use safeUrl with strict validation for media
+        const safeMediaUrl = safeUrl(mediaUrl, '');
 
         if (safeMediaUrl) {
             if (mediaType === 'video') {
@@ -412,7 +467,7 @@ export function createPostElement(post) {
 
     article.innerHTML = `
         <div class="post-layout">
-            <img src="${sanitizeHTML(post.authorPhoto)}" alt="${safeName}" class="avatar-small post-avatar" data-user-id="${post.authorId}">
+            <img src="${safeUrl(post.authorPhoto, 'https://api.dicebear.com/7.x/avataaars/svg?seed=user')}" alt="${safeAttr(post.authorName)}" class="avatar-small post-avatar" data-user-id="${post.authorId}">
             <div class="post-body">
                 <header class="post-header">
                     <span class="post-user-name clickable-user" data-user-id="${post.authorId}">${safeName} ${verifiedIcon}</span>
@@ -450,6 +505,7 @@ export function formatContent(content) {
 }
 
 // Handle media upload preview (images and videos)
+// Now stores File object instead of base64 - actual upload to Cloudinary happens in createFirestorePost
 export function handleMediaUpload(file, previewContainer, removeCallback, setPendingMedia) {
     if (!file) {
         onToast?.('Por favor selecciona un archivo');
@@ -478,8 +534,10 @@ export function handleMediaUpload(file, previewContainer, removeCallback, setPen
         return;
     }
 
+    const mediaType = isVideo ? 'video' : 'image';
+
     if (isVideo) {
-        // For videos, create object URL for preview
+        // For videos, create object URL for preview and check duration
         const videoUrl = URL.createObjectURL(file);
 
         // Create a temporary video element to check duration
@@ -488,50 +546,20 @@ export function handleMediaUpload(file, previewContainer, removeCallback, setPen
         tempVideo.src = videoUrl;
 
         tempVideo.onloadedmetadata = () => {
-            URL.revokeObjectURL(tempVideo.src);
-
             if (tempVideo.duration > 15) {
+                URL.revokeObjectURL(videoUrl);
                 onToast?.('El video debe ser de máximo 15 segundos');
                 return;
             }
 
-            // Video is valid, proceed with upload
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const videoData = e.target.result;
-                setPendingMedia({ data: videoData, type: 'video' });
-
-                previewContainer.innerHTML = `
-                    <div class="video-preview">
-                        <video src="${videoData}" controls muted class="preview-video"></video>
-                        <button class="remove-media-btn" type="button"><i data-lucide="x"></i></button>
-                        <span class="video-badge"><i data-lucide="video"></i> Video</span>
-                    </div>
-                `;
-                previewContainer.style.display = 'block';
-
-                if (window.lucide) window.lucide.createIcons();
-
-                previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
-                    setPendingMedia(null);
-                    previewContainer.innerHTML = '';
-                    previewContainer.style.display = 'none';
-                    if (removeCallback) removeCallback();
-                });
-            };
-            reader.readAsDataURL(file);
-        };
-    } else {
-        // Handle image upload
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const imageData = e.target.result;
-            setPendingMedia({ data: imageData, type: 'image' });
+            // Video is valid - store File object, not base64
+            setPendingMedia({ file: file, type: 'video', previewUrl: videoUrl });
 
             previewContainer.innerHTML = `
-                <div class="image-preview">
-                    <img src="${imageData}" alt="Preview">
+                <div class="video-preview">
+                    <video src="${videoUrl}" controls muted class="preview-video"></video>
                     <button class="remove-media-btn" type="button"><i data-lucide="x"></i></button>
+                    <span class="video-badge"><i data-lucide="video"></i> Video</span>
                 </div>
             `;
             previewContainer.style.display = 'block';
@@ -539,13 +567,37 @@ export function handleMediaUpload(file, previewContainer, removeCallback, setPen
             if (window.lucide) window.lucide.createIcons();
 
             previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
+                URL.revokeObjectURL(videoUrl);
                 setPendingMedia(null);
                 previewContainer.innerHTML = '';
                 previewContainer.style.display = 'none';
                 if (removeCallback) removeCallback();
             });
         };
-        reader.readAsDataURL(file);
+    } else {
+        // Handle image upload - use object URL for preview, store File
+        const imageUrl = URL.createObjectURL(file);
+
+        // Store File object, not base64
+        setPendingMedia({ file: file, type: 'image', previewUrl: imageUrl });
+
+        previewContainer.innerHTML = `
+            <div class="image-preview">
+                <img src="${imageUrl}" alt="Preview">
+                <button class="remove-media-btn" type="button"><i data-lucide="x"></i></button>
+            </div>
+        `;
+        previewContainer.style.display = 'block';
+
+        if (window.lucide) window.lucide.createIcons();
+
+        previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
+            URL.revokeObjectURL(imageUrl);
+            setPendingMedia(null);
+            previewContainer.innerHTML = '';
+            previewContainer.style.display = 'none';
+            if (removeCallback) removeCallback();
+        });
     }
 }
 

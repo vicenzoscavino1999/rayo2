@@ -1,7 +1,7 @@
 // src/comments.js - Comments system for posts
 // Rayo Social Network - Modularized
 
-import { sanitizeHTML, getTimeAgo } from '../utils.js';
+import { sanitizeHTML, getTimeAgo, safeUrl, safeAttr } from '../utils.js';
 
 // Module state
 let db, collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, serverTimestamp, increment;
@@ -134,10 +134,10 @@ export function createCommentElement(comment) {
     const safeName = sanitizeHTML(comment.authorName);
     const safeUsername = sanitizeHTML(comment.authorUsername);
     const safeContent = sanitizeHTML(comment.content);
-    const safePhoto = sanitizeHTML(comment.authorPhoto);
+    const photoUrl = safeUrl(comment.authorPhoto, 'https://api.dicebear.com/7.x/avataaars/svg?seed=user');
 
     div.innerHTML = `
-        <img src="${safePhoto}" alt="${safeName}" class="avatar-tiny">
+        <img src="${photoUrl}" alt="${safeAttr(comment.authorName)}" class="avatar-tiny">
         <div class="comment-body">
             <div class="comment-header">
                 <span class="comment-author">${safeName}</span>

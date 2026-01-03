@@ -1,10 +1,13 @@
-// src/news.js - News feed integration
-// Rayo Social Network - External news for "Para ti" tab
+// src/news.js - GNews API integration for Rayo
+// Fetches technology and entertainment news via Firebase Functions proxy
 
-import { getTimeAgo } from '../utils.js';
+import { getTimeAgo, sanitizeHTML, safeUrl, safeAttr } from '../utils.js';
 
-// GNews API configuration
-// Free tier: 100 requests/day
+// Firebase Functions proxy URL (set after deploy)
+// Format: https://<region>-<project>.cloudfunctions.net/gnewsProxy
+const GNEWS_PROXY_URL = import.meta.env.VITE_GNEWS_PROXY_URL || '';
+
+// Fallback: direct API (only for development if proxy not set)
 const GNEWS_API_KEY = import.meta.env.VITE_GNEWS_API_KEY || '';
 const GNEWS_BASE_URL = 'https://gnews.io/api/v4';
 
@@ -13,7 +16,7 @@ let cachedNews = [];
 let lastFetchTime = 0;
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes
 
-// Fetch news from GNews API
+// Fetch news from GNews API (via proxy or direct)
 export async function fetchNews(category = 'technology', maxResults = 10) {
     const now = Date.now();
 
@@ -22,8 +25,9 @@ export async function fetchNews(category = 'technology', maxResults = 10) {
         return cachedNews;
     }
 
-    if (!GNEWS_API_KEY) {
-        console.warn('GNews API key not configured. Using fallback news.');
+    // No proxy and no direct key = fallback
+    if (!GNEWS_PROXY_URL && !GNEWS_API_KEY) {
+        console.warn('GNews not configured. Using fallback news.');
         return getFallbackNews();
     }
 
@@ -45,9 +49,18 @@ export async function fetchNews(category = 'technology', maxResults = 10) {
     }
 }
 
-// Fetch single category
+// Fetch single category (via proxy or direct)
 async function fetchCategory(category, max) {
-    const url = `${GNEWS_BASE_URL}/top-headlines?category=${category}&lang=es&max=${max}&apikey=${GNEWS_API_KEY}`;
+    let url;
+
+    if (GNEWS_PROXY_URL) {
+        // Use Firebase Functions proxy (secure)
+        url = `${GNEWS_PROXY_URL}?category=${category}&max=${max}&lang=es&country=mx`;
+    } else {
+        // Fallback to direct API (development only)
+        console.warn('Using direct GNews API - not secure for production');
+        url = `${GNEWS_BASE_URL}/top-headlines?category=${category}&lang=es&max=${max}&apikey=${GNEWS_API_KEY}`;
+    }
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -162,10 +175,18 @@ export function createNewsElement(newsItem) {
     const categoryIcon = newsItem.category === 'Tecnología' ? 'cpu' : 'film';
     const categoryColor = newsItem.category === 'Tecnología' ? 'tech' : 'entertainment';
 
+    // Sanitize all external API content
+    const safeTitle = sanitizeHTML(newsItem.title || '');
+    const safeSource = sanitizeHTML(newsItem.source || 'Fuente');
+    const safeDescription = sanitizeHTML(newsItem.description || '');
+    const safeImageUrl = safeUrl(newsItem.imageUrl, '');
+    const safeNewsUrl = safeUrl(newsItem.url, '#');
+    const safeCategory = sanitizeHTML(newsItem.category || '');
+
     article.innerHTML = `
         <div class="news-badge ${categoryColor}">
             <i data-lucide="${categoryIcon}"></i>
-            <span>${newsItem.category}</span>
+            <span>${safeCategory}</span>
         </div>
         <div class="post-layout news-layout">
             <div class="news-source-avatar">
@@ -173,24 +194,24 @@ export function createNewsElement(newsItem) {
             </div>
             <div class="post-body">
                 <header class="post-header">
-                    <span class="post-user-name news-source">${newsItem.source}</span>
+                    <span class="post-user-name news-source">${safeSource}</span>
                     <span class="post-time">· ${timeAgo}</span>
                 </header>
                 <div class="post-content news-content">
-                    <h3 class="news-title">${newsItem.title}</h3>
-                    <p class="news-description">${newsItem.description || ''}</p>
+                    <h3 class="news-title">${safeTitle}</h3>
+                    <p class="news-description">${safeDescription}</p>
                 </div>
-                ${newsItem.imageUrl ? `
+                ${safeImageUrl ? `
                     <div class="post-media news-media">
-                        <img src="${newsItem.imageUrl}" alt="${newsItem.title}" loading="lazy">
+                        <img src="${safeImageUrl}" alt="${safeAttr(newsItem.title || '')}" loading="lazy">
                     </div>
                 ` : ''}
                 <footer class="post-footer news-footer">
-                    <a href="${newsItem.url}" target="_blank" rel="noopener noreferrer" class="news-link">
+                    <a href="${safeNewsUrl}" target="_blank" rel="noopener noreferrer" class="news-link">
                         <i data-lucide="external-link"></i>
                         <span>Leer más</span>
                     </a>
-                    <div class="post-action action-share" data-url="${newsItem.url}">
+                    <div class="post-action action-share" data-url="${safeNewsUrl}">
                         <i data-lucide="share"></i>
                     </div>
                 </footer>

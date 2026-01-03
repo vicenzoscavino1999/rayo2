@@ -1,6 +1,9 @@
 // app.js - Rayo Social Network
 // Main application entry point with modular architecture
 
+// Import session management (Firebase Auth as source of truth)
+import { requireCurrentUser, onSessionChange, logout, updateCachedUser } from './session.js';
+
 // Import modules
 import {
     initPostsModule,
@@ -66,17 +69,18 @@ import {
 let currentUser = null;
 let currentView = 'feed';
 let pendingMedia = null; // { data: string, type: 'image' | 'video' }
+let unsubscribeAuth = null;
 
 // Get/Set pending media
 function getPendingMedia() { return pendingMedia; }
 function setPendingMedia(data) { pendingMedia = data; }
 
 document.addEventListener('DOMContentLoaded', async () => {
-    // ==================== CHECK AUTH ====================
-    const demoUser = JSON.parse(localStorage.getItem('rayo_demo_user') || 'null');
+    // ==================== CHECK AUTH (Firebase Auth as source of truth) ====================
+    currentUser = await requireCurrentUser();
 
-    if (!demoUser || !demoUser.uid) {
-        console.warn('No user found in localStorage, redirecting to login');
+    if (!currentUser) {
+        console.warn('No authenticated user, redirecting to login');
         window.location.href = 'login.html';
         return;
     }
@@ -86,43 +90,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         window.lucide.createIcons();
     }
 
-    // ==================== VERIFY FIREBASE AUTH STATE ====================
-    try {
-        const { auth, onAuthChange } = await import('./firebase-config.js');
-
-        onAuthChange((firebaseUser) => {
-            if (!firebaseUser) {
-                console.warn('Firebase auth invalid, cleaning up and redirecting');
-                localStorage.removeItem('rayo_demo_mode');
-                localStorage.removeItem('rayo_demo_user');
-                localStorage.removeItem('rayo_firebase_user');
-                window.location.href = 'login.html';
-                return;
-            }
-
-            const storedUser = JSON.parse(localStorage.getItem('rayo_demo_user') || '{}');
-            if (storedUser.uid !== firebaseUser.uid) {
-                localStorage.setItem('rayo_demo_user', JSON.stringify({
-                    uid: firebaseUser.uid,
-                    displayName: firebaseUser.displayName || storedUser.displayName,
-                    username: storedUser.username || firebaseUser.email?.split('@')[0],
-                    photoURL: firebaseUser.photoURL || storedUser.photoURL,
-                    email: firebaseUser.email
-                }));
-            }
-        });
-    } catch (err) {
-        console.warn('Could not verify Firebase auth state:', err.message);
-    }
+    // ==================== LISTEN FOR AUTH CHANGES (cross-tab logout only) ====================
+    // Note: We already have currentUser from requireCurrentUser(), so only listen for logout
+    unsubscribeAuth = onSessionChange(
+        null, // Don't need onLogin - we already have the user
+        () => {
+            // User logged out - redirect
+            window.location.href = 'login.html';
+        }
+    );
 
     // ==================== INITIALIZE APP ====================
-    currentUser = demoUser;
-
-    if (!currentUser.following) {
-        currentUser.following = [];
-        localStorage.setItem('rayo_demo_user', JSON.stringify(currentUser));
-    }
-
     updateUserUI(currentUser);
 
     // ==================== INITIALIZE MODULES ====================
@@ -221,7 +199,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupComposer(
         (content, media) => {
             if (media) {
-                createFirestorePost(content, media.data, media.type);
+                // Pass File object for Cloudinary upload, or data URL for backward compatibility
+                createFirestorePost(content, media.file || media.data, media.type);
             } else {
                 createFirestorePost(content, null, 'image');
             }
@@ -235,7 +214,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupPostModal(
         (content, media) => {
             if (media) {
-                createFirestorePost(content, media.data, media.type);
+                // Pass File object for Cloudinary upload, or data URL for backward compatibility
+                createFirestorePost(content, media.file || media.data, media.type);
             } else {
                 createFirestorePost(content, null, 'image');
             }
@@ -342,19 +322,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('nav-logout')?.addEventListener('click', async (e) => {
         e.preventDefault();
 
-        try {
-            const { auth } = await import('./firebase-config.js');
-            const { signOut } = await import('firebase/auth');
-            await signOut(auth);
-        } catch (err) {
-            console.error('Error signing out from Firebase:', err);
-        }
-
+        // Cleanup subscriptions
         unsubscribeFromPosts();
         unsubscribeFromNotifications();
+        if (unsubscribeAuth) unsubscribeAuth();
+
+        // Logout via session (Firebase signOut)
+        await logout();
+
+        // Clear legacy localStorage (cleanup only)
         localStorage.removeItem('rayo_demo_mode');
         localStorage.removeItem('rayo_demo_user');
         localStorage.removeItem('rayo_firebase_user');
+
         window.location.href = 'login.html';
     });
 
