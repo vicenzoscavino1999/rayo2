@@ -2,6 +2,7 @@
 // Rayo Social Network - Real-time notifications
 
 import { getTimeAgo, sanitizeHTML, safeUrl, safeAttr } from '../utils.js';
+import { createIcons } from 'lucide';
 
 // Module state  
 let db, collection, addDoc, getDocs, query, orderBy, limit,
@@ -188,7 +189,7 @@ export async function showNotifications(container, headerElement, showFeedCallba
     // Mark all as read
     await markAllAsRead();
 
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     document.getElementById('btn-back')?.addEventListener('click', showFeedCallback);
 }

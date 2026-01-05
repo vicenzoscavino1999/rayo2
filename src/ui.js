@@ -1,10 +1,15 @@
 // src/ui.js - UI helpers, modals, and toast notifications
 // Rayo Social Network - Modularized
 
+import { createIcons } from 'lucide';
+
 // Show toast notification
 export function showToast(message) {
     const toast = document.createElement('div');
     toast.className = 'toast';
+    // Accessibility: announce to screen readers
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
     toast.textContent = message;
     document.body.appendChild(toast);
 
@@ -51,7 +56,7 @@ export function showFeedHeader(headerElement, onTabChange) {
         });
     });
 
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 }
 
 // Post modal management
@@ -268,4 +273,81 @@ export function updateMobileNavActive(activeId) {
         item.classList.remove('active');
     });
     document.getElementById(activeId)?.classList.add('active');
+}
+
+// ==================== ACCESSIBILITY HELPERS ====================
+
+/**
+ * Trap focus within a modal for keyboard accessibility
+ * @param {HTMLElement} modalElement - The modal container element
+ * @param {Function} onEscape - Optional callback when Escape is pressed
+ * @returns {Function} Cleanup function to remove event listener
+ */
+export function trapFocus(modalElement, onEscape = null) {
+    const focusableSelectors = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+    const handleKeyDown = (e) => {
+        const focusableEls = modalElement.querySelectorAll(focusableSelectors);
+        const firstEl = focusableEls[0];
+        const lastEl = focusableEls[focusableEls.length - 1];
+
+        if (e.key === 'Tab') {
+            if (e.shiftKey && document.activeElement === firstEl) {
+                e.preventDefault();
+                lastEl?.focus();
+            } else if (!e.shiftKey && document.activeElement === lastEl) {
+                e.preventDefault();
+                firstEl?.focus();
+            }
+        }
+
+        if (e.key === 'Escape' && onEscape) {
+            onEscape();
+        }
+    };
+
+    modalElement.addEventListener('keydown', handleKeyDown);
+
+    // Focus first focusable element
+    const firstFocusable = modalElement.querySelector(focusableSelectors);
+    firstFocusable?.focus();
+
+    // Return cleanup function
+    return () => modalElement.removeEventListener('keydown', handleKeyDown);
+}
+
+/**
+ * Make an icon clickable with proper accessibility
+ * Wraps icon in a button if not already, adds aria-label
+ * @param {HTMLElement} iconElement - The icon element (e.g., <i data-lucide="...">)
+ * @param {string} ariaLabel - Accessible label for screen readers
+ * @param {Function} onClick - Click handler
+ */
+export function makeIconAccessible(iconElement, ariaLabel, onClick) {
+    if (!iconElement) return;
+
+    // If parent is already a button, just add aria-label
+    if (iconElement.parentElement?.tagName === 'BUTTON') {
+        iconElement.parentElement.setAttribute('aria-label', ariaLabel);
+        if (onClick) {
+            iconElement.parentElement.addEventListener('click', onClick);
+        }
+        return iconElement.parentElement;
+    }
+
+    // Create wrapper button
+    const button = document.createElement('button');
+    button.className = 'btn-icon';
+    button.setAttribute('aria-label', ariaLabel);
+    button.setAttribute('type', 'button');
+
+    // Replace icon with button containing icon
+    iconElement.parentElement?.insertBefore(button, iconElement);
+    button.appendChild(iconElement);
+
+    if (onClick) {
+        button.addEventListener('click', onClick);
+    }
+
+    return button;
 }

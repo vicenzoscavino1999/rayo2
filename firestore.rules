@@ -19,75 +19,275 @@ service cloud.firestore {
     // Users collection
     match /users/{userId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isOwner(userId);
-      // Allow owner to update (except sensitive fields), OR allow others to ONLY modify followers
+
+      // Create: schema control + no "self-verified"
+      allow create: if isAuthenticated()
+        && isOwner(userId)
+        && request.resource.data.keys().hasOnly([
+          'uid', 'email', 'displayName', 'username', 'photoURL', 'bio',
+          'followers', 'following', 'verified', 'verifiedColor', 'createdAt'
+        ])
+        && request.resource.data.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.displayName.size() <= 80
+        && request.resource.data.username is string
+        && request.resource.data.username.size() > 0
+        && request.resource.data.username.size() <= 30
+        && request.resource.data.username.matches('^[A-Za-z0-9_]+$')
+        && request.resource.data.photoURL is string
+        && request.resource.data.photoURL.size() > 0
+        && request.resource.data.photoURL.size() <= 2048
+        && request.resource.data.bio is string
+        && request.resource.data.bio.size() <= 280
+        && request.resource.data.followers is list
+        && request.resource.data.following is list
+        && request.resource.data.createdAt == request.time
+        && (!request.resource.data.keys().hasAny(['verified']) || request.resource.data.verified == false)
+        && (!request.resource.data.keys().hasAny(['verifiedColor']) || request.resource.data.verifiedColor == null);
+
+      // Update: owner solo puede editar perfil + following. Otros: followers (solo self add/remove) y sin self-follow.
       allow update: if isAuthenticated() && (
-        // Owner can update, but NOT verified/verifiedColor fields
-        (isOwner(userId) && 
-         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verified', 'verifiedColor'])) ||
-        // Others can only add/remove themselves from followers array (atomic: only one change at a time)
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers']) &&
-         // Adding yourself: you're added AND nothing else removed
-         ((request.resource.data.followers.toSet().difference(resource.data.followers.toSet()).hasOnly([request.auth.uid]) &&
-           resource.data.followers.toSet().difference(request.resource.data.followers.toSet()).size() == 0) ||
-          // Removing yourself: you're removed AND nothing else added
-          (resource.data.followers.toSet().difference(request.resource.data.followers.toSet()).hasOnly([request.auth.uid]) &&
-           request.resource.data.followers.toSet().difference(resource.data.followers.toSet()).size() == 0)))
+        (isOwner(userId) &&
+         request.resource.data.diff(resource.data).affectedKeys()
+           .hasOnly(['displayName', 'username', 'bio', 'photoURL', 'following']) &&
+
+         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['displayName']) ||
+           (request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() > 0 &&
+            request.resource.data.displayName.size() <= 80)) &&
+
+         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['username']) ||
+           (request.resource.data.username is string &&
+            request.resource.data.username.size() > 0 &&
+            request.resource.data.username.size() <= 30 &&
+            request.resource.data.username.matches('^[A-Za-z0-9_]+$'))) &&
+
+         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['bio']) ||
+           (request.resource.data.bio is string &&
+            request.resource.data.bio.size() <= 280)) &&
+
+         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['photoURL']) ||
+           (request.resource.data.photoURL is string &&
+            request.resource.data.photoURL.size() > 0 &&
+            request.resource.data.photoURL.size() <= 2048)) &&
+
+         (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['following']) ||
+           (request.resource.data.following is list &&
+            request.resource.data.following.size() <= 10000))
+        ) ||
+
+        (userId != request.auth.uid &&
+         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers']) &&
+         request.resource.data.followers is list &&
+         (
+           (resource.data.followers is list &&
+            (
+              (request.resource.data.followers.toSet().difference(resource.data.followers.toSet()).hasOnly([request.auth.uid]) &&
+               resource.data.followers.toSet().difference(request.resource.data.followers.toSet()).size() == 0) ||
+              (resource.data.followers.toSet().difference(request.resource.data.followers.toSet()).hasOnly([request.auth.uid]) &&
+               request.resource.data.followers.toSet().difference(resource.data.followers.toSet()).size() == 0)
+            )) ||
+           (!resource.data.keys().hasAny(['followers']) &&
+            request.resource.data.followers.size() == 1 &&
+            request.resource.data.followers[0] == request.auth.uid)
+         ))
       );
-      allow delete: if false; // Users cannot be deleted
-      
-      // Notifications subcollection
+
+      allow delete: if false;
+
       match /notifications/{notificationId} {
-        // Only the owner can read their notifications
         allow read: if isAuthenticated() && isOwner(userId);
-        // Validated notification creation: fromUserId must match auth, toUserId must match target, type must be valid
         allow create: if isAuthenticated() &&
           request.resource.data.fromUserId == request.auth.uid &&
+          // SECURITY FIX: Validate identity fields
+          request.resource.data.fromUserName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName &&
+          request.resource.data.fromUserPhoto == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.photoURL &&
+          request.resource.data.fromUsername == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username &&
           request.resource.data.toUserId == userId &&
           request.resource.data.type in ['like', 'comment', 'follow', 'mention'] &&
           request.resource.data.keys().hasOnly(['type', 'fromUserId', 'toUserId', 'fromUserName', 'fromUserPhoto', 'fromUsername', 'postId', 'read', 'createdAt']);
-        // Only owner can update (mark as read) - only 'read' field
         allow update: if isAuthenticated() && isOwner(userId) &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
-        // Owner can delete their notifications
         allow delete: if isAuthenticated() && isOwner(userId);
+      }
+
+      // ============================================================
+      // Following subcollection (Phase 3A)
+      // User can only manage their own following list
+      // ============================================================
+      match /following/{targetUserId} {
+        allow read: if isAuthenticated();
+        
+        // Create: only owner, no self-follow, minimal schema
+        allow create: if isAuthenticated() 
+          && isOwner(userId)
+          && targetUserId != userId  // No self-follow
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
+        
+        // Delete: only owner
+        allow delete: if isAuthenticated() && isOwner(userId);
+        
+        // No updates allowed
+        allow update: if false;
+      }
+
+      // ============================================================
+      // Followers subcollection (Phase 3A)
+      // ONLY Cloud Functions can write (via Admin SDK)
+      // ============================================================
+      match /followers/{followerUserId} {
+        allow read: if isAuthenticated();
+        allow write: if false;  // Only Functions via admin SDK
+      }
+
+      // ============================================================
+      // Likes subcollection (Phase 3B)
+      // User can only manage their own likes
+      // ============================================================
+      match /likes/{postId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        
+        // Create: only owner, post must exist, minimal schema
+        allow create: if isAuthenticated() 
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/posts/$(postId))
+          && request.resource.data.keys().hasOnly(['createdAt'])
+          && request.resource.data.createdAt == request.time;
+        
+        // Delete: only owner
+        allow delete: if isAuthenticated() && isOwner(userId);
+        
+        // No updates allowed
+        allow update: if false;
       }
     }
     
+    // ============================================================
+    // USERNAMES COLLECTION (Username uniqueness enforcement)
+    // Only Cloud Functions can write (server-side validation)
+    // ============================================================
+    match /usernames/{username} {
+      allow read: if isAuthenticated();
+      allow write: if false; // Only Functions via admin SDK
+    }
+
+    // ============================================================
+    // POSTS COLLECTION
+    // ============================================================
     // Posts collection
     match /posts/{postId} {
       allow read: if isAuthenticated();
-      // Rate limit: content validation
-      allow create: if isAuthenticated() && 
-        request.resource.data.authorId == request.auth.uid &&
-        request.resource.data.content.size() <= 500 &&
-        request.resource.data.content.size() > 0;
+
+      // Create: schema estricto + NO "verified" + timestamps servidor
+      allow create: if isAuthenticated()
+        && request.resource.data.keys().hasOnly([
+          'authorId', 'authorName', 'authorUsername', 'authorPhoto',
+          'verified',
+          'content',
+          'mediaUrl', 'mediaType', 'imageUrl',
+          'likes', 'reposts',
+          'commentCount', 'views',
+          'createdAt'
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        // SECURITY FIX: Validate identity fields match user profile (prevent impersonation)
+        && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName
+        && request.resource.data.authorUsername == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+        && request.resource.data.authorPhoto == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.photoURL
+        // SECURITY FIX: Rate limiting (require verified email)
+        && request.auth.token.email_verified == true
+        && request.resource.data.verified == false
+        && request.resource.data.content is string
+        && request.resource.data.content.size() > 0
+        && request.resource.data.content.size() <= 500
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.likes is list
+        && request.resource.data.likes.size() == 0
+        && request.resource.data.reposts is list
+        && request.resource.data.reposts.size() == 0
+        && request.resource.data.commentCount is int
+        && request.resource.data.commentCount == 0
+        && request.resource.data.views is int
+        && request.resource.data.views == 0
+        && request.resource.data.mediaType in ['image', 'video']
+        && (request.resource.data.mediaUrl == null ||
+            (request.resource.data.mediaUrl is string &&
+             request.resource.data.mediaUrl.size() <= 2048 &&
+             request.resource.data.mediaUrl.matches('^https?://')))
+        && (request.resource.data.imageUrl == null ||
+            (request.resource.data.imageUrl is string &&
+             request.resource.data.imageUrl.size() <= 2048 &&
+             request.resource.data.imageUrl.matches('^https?://')))
+        && (
+          (request.resource.data.mediaType == 'image' &&
+           request.resource.data.imageUrl == request.resource.data.mediaUrl) ||
+          (request.resource.data.mediaType == 'video' &&
+           request.resource.data.imageUrl == null)
+        );
+
+      // Update: SOLO likes (self) o commentCount +1 (sin permitir editar autor/contenido/media)
       allow update: if isAuthenticated() && (
-        // Owner can update their post
-        resource.data.authorId == request.auth.uid ||
-        // Non-owners can modify likes array (add/remove themselves only - atomic)
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
-         // Adding yourself: you're added AND nothing else removed
-         ((request.resource.data.likes.toSet().difference(resource.data.likes.toSet()).hasOnly([request.auth.uid]) &&
-           resource.data.likes.toSet().difference(request.resource.data.likes.toSet()).size() == 0) ||
-          // Removing yourself: you're removed AND nothing else added
-          (resource.data.likes.toSet().difference(request.resource.data.likes.toSet()).hasOnly([request.auth.uid]) &&
-           request.resource.data.likes.toSet().difference(resource.data.likes.toSet()).size() == 0))) ||
-        // Non-owners can increment commentCount by 1 (when adding a comment)
+         request.resource.data.likes is list &&
+         (
+           (resource.data.likes is list &&
+            (
+              (request.resource.data.likes.toSet().difference(resource.data.likes.toSet()).hasOnly([request.auth.uid]) &&
+               resource.data.likes.toSet().difference(request.resource.data.likes.toSet()).size() == 0) ||
+              (resource.data.likes.toSet().difference(request.resource.data.likes.toSet()).hasOnly([request.auth.uid]) &&
+               request.resource.data.likes.toSet().difference(resource.data.likes.toSet()).size() == 0)
+            )) ||
+           (!resource.data.keys().hasAny(['likes']) &&
+            request.resource.data.likes.size() == 1 &&
+            request.resource.data.likes[0] == request.auth.uid)
+         )) ||
+
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']) &&
-         request.resource.data.commentCount == resource.data.commentCount + 1)
+         request.resource.data.commentCount is int &&
+         (
+           (resource.data.keys().hasAny(['commentCount']) &&
+            resource.data.commentCount is int &&
+            request.resource.data.commentCount == resource.data.commentCount + 1) ||
+           (!resource.data.keys().hasAny(['commentCount']) &&
+            request.resource.data.commentCount == 1)
+         ))
       );
+
       allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
-      
-      // Comments subcollection
+
       match /comments/{commentId} {
         allow read: if isAuthenticated();
-        allow create: if isAuthenticated() && 
-          request.resource.data.authorId == request.auth.uid &&
-          request.resource.data.content.size() <= 280 &&
-          request.resource.data.content.size() > 0;
-        allow update: if false; // Comments cannot be edited
+        allow create: if isAuthenticated()
+          && exists(/databases/$(database)/documents/posts/$(postId))
+          && request.resource.data.keys().hasOnly([
+            'authorId', 'authorName', 'authorUsername', 'authorPhoto',
+            'content', 'createdAt'
+          ])
+          && request.resource.data.authorId == request.auth.uid
+          // SECURITY FIX: Validate identity fields match user profile (prevent impersonation)
+          && request.resource.data.authorName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName
+          && request.resource.data.authorUsername == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+          && request.resource.data.authorPhoto == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.photoURL
+          && request.resource.data.content is string
+          && request.resource.data.content.size() > 0
+          && request.resource.data.content.size() <= 280
+          && request.resource.data.createdAt == request.time;
+        allow update: if false;
         allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+      }
+
+      // ============================================================
+      // Likes subcollection (Phase 3B - for idempotency markers)
+      // ONLY Cloud Functions can write (via Admin SDK)
+      // This is used as a marker to prevent double-counting
+      // ============================================================
+      match /likes/{userId} {
+        allow read: if isAuthenticated();
+        allow write: if false;  // Only Functions via admin SDK
       }
     }
     
@@ -98,8 +298,19 @@ service cloud.firestore {
       // Only allow updating specific fields related to messaging
       allow update: if isAuthenticated() && 
         request.auth.uid in resource.data.participants &&
-        request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['lastMessage', 'lastMessageTime', 'lastMessageSender', 'unreadBy']);
+        (
+          // Message metadata updates
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['lastMessage', 'lastMessageTime', 'lastMessageSender', 'unreadBy']) ||
+          // Typing status updates - user can only update their own typing status
+          (request.resource.data.diff(resource.data).affectedKeys().size() == 1 &&
+           request.resource.data.diff(resource.data).affectedKeys().hasAny(['typing']) &&
+           request.resource.data.typing is map &&
+           // Only the requesting user's typing status can change
+           request.resource.data.typing.keys().toSet().difference(resource.data.get('typing', {}).keys().toSet()).hasOnly([request.auth.uid]) ||
+           request.resource.data.typing[request.auth.uid] is bool
+          )
+        );
       allow delete: if false; // Conversations cannot be deleted
       
       // Messages subcollection
@@ -109,11 +320,25 @@ service cloud.firestore {
         allow create: if isAuthenticated() && 
           request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants &&
           request.resource.data.senderId == request.auth.uid &&
+          // SECURITY FIX: Validate identity fields
+          request.resource.data.senderName == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.displayName &&
+          request.resource.data.senderPhoto == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.photoURL &&
           request.resource.data.createdAt == request.time &&
           request.resource.data.keys().hasOnly(['senderId', 'senderName', 'senderPhoto', 'content', 'createdAt']) &&
           request.resource.data.content.size() <= 1000 &&
           request.resource.data.content.size() > 0;
-        allow update, delete: if false;
+        // Allow recipients to mark messages as read/delivered
+        allow update: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants &&
+          // Only non-sender can update readAt/deliveredAt
+          resource.data.senderId != request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt', 'deliveredAt']) &&
+          // Validate timestamp fields
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['readAt']) ||
+           request.resource.data.readAt == request.time) &&
+          (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['deliveredAt']) ||
+           request.resource.data.deliveredAt == request.time);
+        allow delete: if false;
       }
     }
   }

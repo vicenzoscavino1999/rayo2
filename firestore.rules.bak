@@ -1,0 +1,122 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Rate limits collection - stores last action timestamps per user
+    match /rateLimits/{userId}/{action}/{doc} {
+      allow read: if isAuthenticated() && isOwner(userId);
+      allow write: if isAuthenticated() && isOwner(userId);
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isOwner(userId);
+      // Allow owner to update (except sensitive fields), OR allow others to ONLY modify followers
+      allow update: if isAuthenticated() && (
+        // Owner can update, but NOT verified/verifiedColor fields
+        (isOwner(userId) && 
+         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['verified', 'verifiedColor'])) ||
+        // Others can only add/remove themselves from followers array (atomic: only one change at a time)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followers']) &&
+         // Adding yourself: you're added AND nothing else removed
+         ((request.resource.data.followers.toSet().difference(resource.data.followers.toSet()).hasOnly([request.auth.uid]) &&
+           resource.data.followers.toSet().difference(request.resource.data.followers.toSet()).size() == 0) ||
+          // Removing yourself: you're removed AND nothing else added
+          (resource.data.followers.toSet().difference(request.resource.data.followers.toSet()).hasOnly([request.auth.uid]) &&
+           request.resource.data.followers.toSet().difference(resource.data.followers.toSet()).size() == 0)))
+      );
+      allow delete: if false; // Users cannot be deleted
+      
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        // Only the owner can read their notifications
+        allow read: if isAuthenticated() && isOwner(userId);
+        // Validated notification creation: fromUserId must match auth, toUserId must match target, type must be valid
+        allow create: if isAuthenticated() &&
+          request.resource.data.fromUserId == request.auth.uid &&
+          request.resource.data.toUserId == userId &&
+          request.resource.data.type in ['like', 'comment', 'follow', 'mention'] &&
+          request.resource.data.keys().hasOnly(['type', 'fromUserId', 'toUserId', 'fromUserName', 'fromUserPhoto', 'fromUsername', 'postId', 'read', 'createdAt']);
+        // Only owner can update (mark as read) - only 'read' field
+        allow update: if isAuthenticated() && isOwner(userId) &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        // Owner can delete their notifications
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
+    }
+    
+    // Posts collection
+    match /posts/{postId} {
+      allow read: if isAuthenticated();
+      // Rate limit: content validation
+      allow create: if isAuthenticated() && 
+        request.resource.data.authorId == request.auth.uid &&
+        request.resource.data.content.size() <= 500 &&
+        request.resource.data.content.size() > 0;
+      allow update: if isAuthenticated() && (
+        // Owner can update their post (but NOT immutable fields)
+        (resource.data.authorId == request.auth.uid &&
+         !request.resource.data.diff(resource.data).affectedKeys()
+           .hasAny(['authorId', 'createdAt', 'verified', 'verifiedColor'])) ||
+        // Non-owners can modify likes array (add/remove themselves only - atomic)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+         // Adding yourself: you're added AND nothing else removed
+         ((request.resource.data.likes.toSet().difference(resource.data.likes.toSet()).hasOnly([request.auth.uid]) &&
+           resource.data.likes.toSet().difference(request.resource.data.likes.toSet()).size() == 0) ||
+          // Removing yourself: you're removed AND nothing else added
+          (resource.data.likes.toSet().difference(request.resource.data.likes.toSet()).hasOnly([request.auth.uid]) &&
+           request.resource.data.likes.toSet().difference(resource.data.likes.toSet()).size() == 0))) ||
+        // Non-owners can increment commentCount by 1 (when adding a comment)
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['commentCount']) &&
+         request.resource.data.commentCount == resource.data.commentCount + 1)
+      );
+      allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+      
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() && 
+          request.resource.data.authorId == request.auth.uid &&
+          request.resource.data.content.size() <= 280 &&
+          request.resource.data.content.size() > 0;
+        allow update: if false; // Comments cannot be edited
+        allow delete: if isAuthenticated() && resource.data.authorId == request.auth.uid;
+      }
+    }
+    
+    // Conversations collection
+    match /conversations/{conversationId} {
+      allow read: if isAuthenticated() && request.auth.uid in resource.data.participants;
+      allow create: if isAuthenticated() && request.auth.uid in request.resource.data.participants;
+      // Only allow updating specific fields related to messaging
+      allow update: if isAuthenticated() && 
+        request.auth.uid in resource.data.participants &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['lastMessage', 'lastMessageTime', 'lastMessageSender', 'unreadBy']);
+      allow delete: if false; // Conversations cannot be deleted
+      
+      // Messages subcollection
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+        // Validated message creation: senderId must match auth, createdAt must be server timestamp, fields whitelisted
+        allow create: if isAuthenticated() && 
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants &&
+          request.resource.data.senderId == request.auth.uid &&
+          request.resource.data.createdAt == request.time &&
+          request.resource.data.keys().hasOnly(['senderId', 'senderName', 'senderPhoto', 'content', 'createdAt']) &&
+          request.resource.data.content.size() <= 1000 &&
+          request.resource.data.content.size() > 0;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

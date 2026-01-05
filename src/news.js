@@ -7,9 +7,8 @@ import { getTimeAgo, sanitizeHTML, safeUrl, safeAttr } from '../utils.js';
 // Format: https://<region>-<project>.cloudfunctions.net/gnewsProxy
 const GNEWS_PROXY_URL = import.meta.env.VITE_GNEWS_PROXY_URL || '';
 
-// Fallback: direct API (only for development if proxy not set)
-const GNEWS_API_KEY = import.meta.env.VITE_GNEWS_API_KEY || '';
-const GNEWS_BASE_URL = 'https://gnews.io/api/v4';
+// SECURITY FIX: Removed direct API fallback to prevent key exposure
+// If proxy fails, use fallback news instead of exposing API key
 
 // Cache for news to reduce API calls
 let cachedNews = [];
@@ -25,9 +24,9 @@ export async function fetchNews(category = 'technology', maxResults = 10) {
         return cachedNews;
     }
 
-    // No proxy and no direct key = fallback
-    if (!GNEWS_PROXY_URL && !GNEWS_API_KEY) {
-        console.warn('GNews not configured. Using fallback news.');
+    // SECURITY FIX: Require proxy, no fallback to direct API
+    if (!GNEWS_PROXY_URL) {
+        console.warn('GNews proxy not configured. Using fallback news.');
         return getFallbackNews();
     }
 
@@ -49,18 +48,10 @@ export async function fetchNews(category = 'technology', maxResults = 10) {
     }
 }
 
-// Fetch single category (via proxy or direct)
+// Fetch single category (via proxy only)
 async function fetchCategory(category, max) {
-    let url;
-
-    if (GNEWS_PROXY_URL) {
-        // Use Firebase Functions proxy (secure)
-        url = `${GNEWS_PROXY_URL}?category=${category}&max=${max}&lang=es&country=mx`;
-    } else {
-        // Fallback to direct API (development only)
-        console.warn('Using direct GNews API - not secure for production');
-        url = `${GNEWS_BASE_URL}/top-headlines?category=${category}&lang=es&max=${max}&apikey=${GNEWS_API_KEY}`;
-    }
+    // SECURITY FIX: Only use proxy, no direct API access
+    const url = `${GNEWS_PROXY_URL}?category=${category}&max=${max}&lang=es&country=mx`;
 
     const response = await fetch(url);
     if (!response.ok) {

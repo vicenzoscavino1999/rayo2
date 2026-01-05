@@ -3,6 +3,7 @@
 
 // Import shared utilities
 import { sanitizeHTML, getTimeAgo, formatDate, formatTime, safeUrl, safeAttr } from './utils.js';
+import { createIcons, icons } from 'lucide';
 
 // Import session management (Firebase Auth as source of truth)
 import { requireCurrentUser, onSessionChange, logout } from './session.js';
@@ -16,6 +17,8 @@ import {
     query,
     orderBy,
     limit,
+    limitToLast,
+    endBefore,
     onSnapshot,
     doc,
     updateDoc,
@@ -46,6 +49,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     let unsubscribeConversations = null;
     let unsubscribeMessages = null;
     let unsubscribeAuth = null;
+    let firstVisibleMessage = null; // For pagination
+    let hasMoreMessages = true;
+    let currentOtherUser = null;
+    const MESSAGES_PER_PAGE = 50;
 
     // Listen for auth changes (cross-tab logout)
     unsubscribeAuth = onSessionChange(
@@ -65,7 +72,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check if we came from a profile to start a conversation
     checkStartConversation();
 
-    lucide.createIcons();
+    createIcons({ icons });
 
     // ==================== CHECK START CONVERSATION FROM PROFILE ====================
     function checkStartConversation() {
@@ -89,9 +96,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // ==================== FIRESTORE USERS ====================
-    async function getFirestoreUsers() {
+    // Search users with prefix matching (scalable - max 20 results)
+    async function searchFirestoreUsers(searchTerm = '') {
         try {
-            const snapshot = await getDocs(collection(db, "users"));
+            let q;
+            const usersRef = collection(db, "users");
+
+            if (searchTerm.trim() === '') {
+                // No search term: get recent users (limit 20)
+                q = query(usersRef, orderBy("createdAt", "desc"), limit(20));
+            } else {
+                // Prefix search on username (case-sensitive unfortunately)
+                const term = searchTerm.toLowerCase().trim();
+                q = query(
+                    usersRef,
+                    orderBy("username"),
+                    where("username", ">=", term),
+                    where("username", "<=", term + '\uf8ff'),
+                    limit(20)
+                );
+            }
+
+            const snapshot = await getDocs(q);
             const users = [];
             snapshot.forEach(doc => {
                 const data = doc.data();
@@ -101,28 +127,38 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             return users;
         } catch (error) {
-            console.error('Error loading users:', error);
+            console.error('Error searching users:', error);
             return [];
         }
     }
 
+    // Debounce helper
+    let searchDebounceTimer = null;
+    function debounce(func, delay) {
+        return (...args) => {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => func(...args), delay);
+        };
+    }
+
     async function loadFirestoreUsersList(filter = '') {
-        const users = await getFirestoreUsers();
         const container = document.getElementById('user-search-results');
 
-        const filteredUsers = users.filter(u =>
-            (u.displayName || '').toLowerCase().includes(filter.toLowerCase()) ||
-            (u.username || '').toLowerCase().includes(filter.toLowerCase())
-        );
+        // Show loading state
+        if (filter.trim() !== '') {
+            container.innerHTML = '<div class="no-conversations"><p>Buscando...</p></div>';
+        }
+
+        const users = await searchFirestoreUsers(filter);
 
         container.innerHTML = '';
 
-        if (filteredUsers.length === 0) {
+        if (users.length === 0) {
             container.innerHTML = '<div class="no-conversations"><p>No se encontraron usuarios</p></div>';
             return;
         }
 
-        filteredUsers.forEach(user => {
+        users.forEach(user => {
             const div = document.createElement('div');
             div.className = 'user-search-item';
             div.innerHTML = `
@@ -140,6 +176,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             container.appendChild(div);
         });
     }
+
+    // Debounced version for input events
+    const debouncedUserSearch = debounce((term) => loadFirestoreUsersList(term), 300);
 
     // ==================== FIRESTORE CONVERSATIONS ====================
     function subscribeToConversations() {
@@ -172,7 +211,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const conversationElements = await Promise.all(conversationPromises);
             conversationElements.forEach(el => container.appendChild(el));
 
-            lucide.createIcons();
+            createIcons();
         }, (error) => {
             console.error('Error subscribing to conversations:', error);
             // Show error message to user
@@ -286,15 +325,46 @@ document.addEventListener('DOMContentLoaded', async () => {
             document.getElementById('chat-user-handle').textContent = '@' + otherUser.username;
         }
 
-        // Subscribe to messages in real-time
+        // Store for load more
+        currentOtherUser = otherUser;
+        hasMoreMessages = true;
+        firstVisibleMessage = null;
+
+        // Subscribe to last 50 messages in real-time
         const q = query(
             collection(db, "conversations", conversationId, "messages"),
-            orderBy("createdAt", "asc")
+            orderBy("createdAt", "asc"),
+            limitToLast(MESSAGES_PER_PAGE)
         );
 
         unsubscribeMessages = onSnapshot(q, (snapshot) => {
             const container = document.getElementById('chat-messages');
+
+            // Keep "Load older" button if it exists
+            const existingLoadMore = container.querySelector('.load-older-btn');
+            // Preserve typing indicator
+            const typingIndicator = container.querySelector('.typing-indicator');
             container.innerHTML = '';
+            // Re-add typing indicator
+            if (typingIndicator) {
+                container.appendChild(typingIndicator);
+            } else {
+                // Create new typing indicator if it didn't exist
+                const newTypingIndicator = document.createElement('div');
+                newTypingIndicator.className = 'typing-indicator';
+                newTypingIndicator.id = 'typing-indicator';
+                newTypingIndicator.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+                container.appendChild(newTypingIndicator);
+            }
+
+            // Add "Load older messages" button if there might be more
+            if (snapshot.docs.length >= MESSAGES_PER_PAGE) {
+                const loadMoreBtn = document.createElement('button');
+                loadMoreBtn.className = 'load-older-btn';
+                loadMoreBtn.innerHTML = '<i data-lucide="chevrons-up"></i> Cargar mensajes anteriores';
+                loadMoreBtn.addEventListener('click', () => loadOlderMessages(conversationId));
+                container.appendChild(loadMoreBtn);
+            }
 
             if (snapshot.empty) {
                 container.innerHTML = `
@@ -303,6 +373,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                 `;
                 return;
+            }
+
+            // Store first visible for pagination
+            if (snapshot.docs.length > 0) {
+                firstVisibleMessage = snapshot.docs[0];
             }
 
             let lastDate = null;
@@ -325,7 +400,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Scroll to bottom
             container.scrollTop = container.scrollHeight;
+
+            createIcons({ icons });
+
+            // Mark messages as read
+            markMessagesAsRead(snapshot.docs);
         });
+
+        // Setup typing status observer
+        setupTypingObserver(conversationId);
 
         // Update conversation list active state
         document.querySelectorAll('.conversation-item').forEach(item => {
@@ -339,7 +422,145 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Focus input
         document.getElementById('message-input').focus();
 
-        lucide.createIcons();
+        createIcons({ icons });
+
+    }
+
+    // Mark received messages as read
+    async function markMessagesAsRead(messageDocs) {
+        if (!currentUser) return;
+
+        for (const msgDoc of messageDocs) {
+            const msg = msgDoc.data();
+            // Only mark messages from other user as read
+            if (msg.senderId !== currentUser.uid && !msg.readAt) {
+                try {
+                    await updateDoc(msgDoc.ref, {
+                        readAt: serverTimestamp()
+                    });
+                } catch (e) {
+                    // Silently fail - read receipts are non-critical
+                    console.debug('Could not mark message as read:', e.message);
+                }
+            }
+        }
+    }
+
+    // Setup typing status observer for current conversation
+    let typingUnsubscribe = null;
+    function setupTypingObserver(conversationId) {
+        // Cleanup previous observer
+        if (typingUnsubscribe) {
+            typingUnsubscribe();
+        }
+
+        const conversationRef = doc(db, "conversations", conversationId);
+        typingUnsubscribe = onSnapshot(conversationRef, (snapshot) => {
+            if (!snapshot.exists()) return;
+
+            const data = snapshot.data();
+            const typingIndicator = document.getElementById('typing-indicator');
+            if (!typingIndicator) return;
+
+            // Check if other user is typing
+            const typing = data.typing || {};
+            const otherUserTyping = Object.entries(typing).some(
+                ([uid, isTyping]) => uid !== currentUser.uid && isTyping
+            );
+
+            if (otherUserTyping) {
+                typingIndicator.classList.add('active');
+                // Scroll to show typing indicator
+                const container = document.getElementById('chat-messages');
+                if (container) container.scrollTop = container.scrollHeight;
+            } else {
+                typingIndicator.classList.remove('active');
+            }
+        });
+    }
+
+    // Load older messages (pagination)
+    async function loadOlderMessages(conversationId) {
+        if (!firstVisibleMessage || !hasMoreMessages) return;
+
+        const loadBtn = document.querySelector('.load-older-btn');
+        if (loadBtn) {
+            loadBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Cargando...';
+            loadBtn.disabled = true;
+        }
+
+        try {
+            const q = query(
+                collection(db, "conversations", conversationId, "messages"),
+                orderBy("createdAt", "asc"),
+                endBefore(firstVisibleMessage),
+                limitToLast(MESSAGES_PER_PAGE)
+            );
+
+            const snapshot = await getDocs(q);
+
+            if (snapshot.empty) {
+                hasMoreMessages = false;
+                if (loadBtn) loadBtn.remove();
+                return;
+            }
+
+            const container = document.getElementById('chat-messages');
+            const firstElement = container.firstChild?.nextSibling || container.firstChild; // Skip load more btn
+
+            // Store scroll position
+            const scrollHeight = container.scrollHeight;
+
+            // Update first visible for next pagination
+            if (snapshot.docs.length > 0) {
+                firstVisibleMessage = snapshot.docs[0];
+            }
+
+            // Hide button if no more messages
+            if (snapshot.docs.length < MESSAGES_PER_PAGE) {
+                hasMoreMessages = false;
+                if (loadBtn) loadBtn.remove();
+            } else if (loadBtn) {
+                loadBtn.innerHTML = '<i data-lucide="chevrons-up"></i> Cargar mensajes anteriores';
+                loadBtn.disabled = false;
+            }
+
+            // Create message elements in order
+            let lastDate = null;
+            const fragment = document.createDocumentFragment();
+
+            snapshot.forEach(doc => {
+                const msg = { id: doc.id, ...doc.data() };
+                const timestamp = msg.createdAt?.toMillis ? msg.createdAt.toMillis() : Date.now();
+                const msgDate = new Date(timestamp).toDateString();
+
+                if (msgDate !== lastDate) {
+                    const separator = document.createElement('div');
+                    separator.className = 'message-date-separator';
+                    separator.textContent = formatDate(timestamp);
+                    fragment.appendChild(separator);
+                    lastDate = msgDate;
+                }
+
+                fragment.appendChild(createMessageElement({ ...msg, timestamp }));
+            });
+
+            // Insert after load button (if exists)
+            const insertPoint = loadBtn ? loadBtn.nextSibling : container.firstChild;
+            container.insertBefore(fragment, insertPoint);
+
+            // Maintain scroll position
+            container.scrollTop = container.scrollHeight - scrollHeight;
+
+            createIcons({ icons });
+
+        } catch (error) {
+            console.error('Error loading older messages:', error);
+            if (loadBtn) {
+                loadBtn.innerHTML = '<i data-lucide="chevrons-up"></i> Error - Reintentar';
+                loadBtn.disabled = false;
+            }
+        }
     }
 
     async function sendFirestoreMessage(content) {
@@ -463,9 +684,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
+        // Read receipt status for sent messages
+        let statusHtml = '';
+        if (isSent) {
+            const status = message.readAt ? 'read' : (message.deliveredAt ? 'delivered' : 'sent');
+            const checkIcon = status === 'read'
+                ? '<i data-lucide="check-check"></i>'
+                : '<i data-lucide="check"></i>';
+            statusHtml = `<span class="message-status ${status}">${checkIcon}</span>`;
+        }
+
         div.innerHTML = `
             <div class="message-content">${safeContent}</div>
-            <div class="message-time">${timeStr}</div>
+            <div class="message-meta">
+                <span class="message-time">${timeStr}</span>
+                ${statusHtml}
+            </div>
         `;
         return div;
     }
@@ -475,7 +709,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('new-message-modal').classList.add('active');
         document.getElementById('search-users-input').value = '';
         loadFirestoreUsersList();
-        lucide.createIcons();
+        createIcons();
         setTimeout(() => document.getElementById('search-users-input').focus(), 100);
     }
 
@@ -497,10 +731,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (e.target.id === 'new-message-modal') closeModal();
     });
 
-    // User search
-    // User search
+    // User search with debounce (300ms delay)
     document.getElementById('search-users-input').addEventListener('input', (e) => {
-        loadFirestoreUsersList(e.target.value);
+        debouncedUserSearch(e.target.value);
     });
 
     // Conversation search
@@ -518,7 +751,51 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     messageInput.addEventListener('input', () => {
         sendButton.disabled = messageInput.value.trim().length === 0;
+
+        // Update typing status in Firestore
+        if (activeConversationId && messageInput.value.trim().length > 0) {
+            updateTypingStatus(true);
+        } else {
+            updateTypingStatus(false);
+        }
     });
+
+    // Clear typing status on blur
+    messageInput.addEventListener('blur', () => {
+        updateTypingStatus(false);
+    });
+
+    // Typing status update function (debounced)
+    let typingTimeout = null;
+    async function updateTypingStatus(isTyping) {
+        if (!activeConversationId) return;
+
+        // Clear previous timeout
+        clearTimeout(typingTimeout);
+
+        if (isTyping) {
+            try {
+                await updateDoc(doc(db, "conversations", activeConversationId), {
+                    [`typing.${currentUser.uid}`]: true
+                });
+
+                // Auto-clear typing after 3 seconds of no input
+                typingTimeout = setTimeout(() => {
+                    updateTypingStatus(false);
+                }, 3000);
+            } catch (e) {
+                // Silently fail - typing indicator is non-critical
+            }
+        } else {
+            try {
+                await updateDoc(doc(db, "conversations", activeConversationId), {
+                    [`typing.${currentUser.uid}`]: false
+                });
+            } catch (e) {
+                // Silently fail
+            }
+        }
+    }
 
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && messageInput.value.trim()) {

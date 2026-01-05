@@ -145,3 +145,36 @@ export function isCloudinaryConfigured() {
 export function getCloudinaryUploadUrl() {
     return `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`;
 }
+
+/**
+ * Get Cloudinary signature from Cloud Function (Secure)
+ * @param {string} idToken - Firebase ID token for authentication
+ * @returns {Promise<{signature: string, timestamp: number}>}
+ */
+export async function getCloudinarySignature(idToken) {
+    const timestamp = Math.round(Date.now() / 1000);
+
+    try {
+        const response = await fetch('https://us-central1-rayo-app-47718.cloudfunctions.net/generateCloudinarySignature', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${idToken}`
+            },
+            body: JSON.stringify({ timestamp })
+        });
+
+        if (!response.ok) {
+            throw new Error('Signature generation failed');
+        }
+
+        const data = await response.json();
+        return {
+            signature: data.signature,
+            timestamp: data.timestamp
+        };
+    } catch (error) {
+        console.error('Error getting Cloudinary signature:', error);
+        throw error;
+    }
+}

@@ -3,11 +3,22 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Rayo ⚡ - Mensajes</title>
+
+    <!-- PWA Configuration -->
+    <meta name="theme-color" content="#030303">
+    <link rel="manifest" href="/manifest.json">
+
+    <!-- iOS PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Rayo">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="messages.css">
-    <script src="https://unpkg.com/lucide@latest"></script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -96,6 +107,12 @@
                     </div>
                     <div class="chat-messages" id="chat-messages">
                         <!-- Messages will be loaded dynamically -->
+                        <!-- Typing indicator shown when other user is typing -->
+                        <div class="typing-indicator" id="typing-indicator">
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </div>
                     </div>
                     <div class="chat-input-area">
                         <button class="btn-icon">
@@ -114,18 +131,21 @@
     </div>
 
     <!-- New Message Modal -->
-    <div class="modal-overlay" id="new-message-modal">
+    <div class="modal-overlay" id="new-message-modal" role="dialog" aria-modal="true"
+        aria-labelledby="new-message-title">
         <div class="modal-content modal-medium">
             <div class="modal-header">
-                <button class="modal-close" id="modal-close"><i data-lucide="x"></i></button>
-                <span class="modal-title">Nuevo mensaje</span>
+                <button class="modal-close" id="modal-close" aria-label="Cerrar modal"><i data-lucide="x"></i></button>
+                <span class="modal-title" id="new-message-title">Nuevo mensaje</span>
             </div>
             <div class="modal-body">
                 <div class="user-search">
-                    <i data-lucide="search"></i>
-                    <input type="text" placeholder="Buscar personas" id="search-users-input">
+                    <i data-lucide="search" aria-hidden="true"></i>
+                    <input type="text" placeholder="Buscar personas" id="search-users-input"
+                        aria-label="Buscar personas">
                 </div>
-                <div class="user-search-results" id="user-search-results">
+                <div class="user-search-results" id="user-search-results" role="listbox"
+                    aria-label="Resultados de búsqueda">
                     <!-- Users will be loaded dynamically -->
                 </div>
             </div>
@@ -155,6 +175,17 @@
     </nav>
 
     <script type="module" src="messages.js"></script>
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/service-worker.js')
+                    .then(reg => console.log('✅ Service Worker registered'))
+                    .catch(err => console.log('❌ Service Worker registration failed:', err));
+            });
+        }
+    </script>
 </body>
 
 </html>

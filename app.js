@@ -3,6 +3,7 @@
 
 // Import session management (Firebase Auth as source of truth)
 import { requireCurrentUser, onSessionChange, logout, updateCachedUser } from './session.js';
+import { createIcons, icons } from 'lucide';
 
 // Import modules
 import {
@@ -18,6 +19,8 @@ import {
     setupInfiniteScroll,
     handleImageUpload,
     setNewsElementCreator,
+    enableIncrementalMode,
+    disableIncrementalMode,
     updateCurrentUser as updatePostsUser
 } from './src/posts.js';
 
@@ -45,7 +48,8 @@ import {
     showFeedHeader,
     setupPostModal,
     setupComposer,
-    updateMobileNavActive
+    updateMobileNavActive,
+    trapFocus
 } from './src/ui.js';
 
 import {
@@ -70,6 +74,8 @@ let currentUser = null;
 let currentView = 'feed';
 let pendingMedia = null; // { data: string, type: 'image' | 'video' }
 let unsubscribeAuth = null;
+let cleanupPostModalTrap = null;
+let cleanupCommentModalTrap = null;
 
 // Get/Set pending media
 function getPendingMedia() { return pendingMedia; }
@@ -85,10 +91,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         return;
     }
 
-    // Initialize icons immediately
-    if (window.lucide) {
-        window.lucide.createIcons();
-    }
+    // Initialize icons (Lucide is imported as ES module)
+    createIcons({ icons });
 
     // ==================== LISTEN FOR AUTH CHANGES (cross-tab logout only) ====================
     // Note: We already have currentUser from requireCurrentUser(), so only listen for logout
@@ -123,6 +127,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Subscribe to posts
         subscribeToFirestorePosts((posts) => {
             if (currentView === 'feed') {
+                // Enable incremental mode for unfiltered feed
+                // This prevents full re-render on each update
+                enableIncrementalMode(createPostElement);
                 renderPosts(posts, null, false, createPostElement, newsData);
                 setupInfiniteScroll(createPostElement);
             }
@@ -135,7 +142,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     updateNotificationBadge();
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     // ==================== URL PARAMS ====================
     const urlParams = new URLSearchParams(window.location.search);
@@ -211,7 +218,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     );
 
     // Modal
-    setupPostModal(
+    const postModalHandlers = setupPostModal(
         (content, media) => {
             if (media) {
                 // Pass File object for Cloudinary upload, or data URL for backward compatibility
@@ -224,6 +231,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         setPendingMedia
     );
 
+    // Setup focus trapping for post modal
+    const postModalOverlay = document.getElementById('modal-overlay');
+    const btnPublishModal = document.getElementById('btn-publish-modal');
+    const btnPublishFab = document.getElementById('btn-publish-fab');
+
+    const openPostModalWithTrap = () => {
+        postModalHandlers.openModal();
+        if (postModalOverlay) {
+            cleanupPostModalTrap = trapFocus(postModalOverlay, () => {
+                postModalHandlers.closeModal();
+                if (cleanupPostModalTrap) cleanupPostModalTrap();
+            });
+        }
+    };
+
+    btnPublishModal?.addEventListener('click', openPostModalWithTrap);
+    btnPublishFab?.addEventListener('click', openPostModalWithTrap);
+
     // Tab switching
     const tabs = document.querySelectorAll('.tab');
     tabs.forEach(tab => {
@@ -233,9 +258,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const posts = getCurrentPosts();
             if (tab.dataset.tab === 'siguiendo') {
+                // Disable incremental mode for filtered view
+                disableIncrementalMode();
                 renderPosts(posts, null, true, createPostElement);
             } else {
-                renderPosts(posts, null, false, createPostElement);
+                // Enable incremental mode for "Para ti" unfiltered view
+                enableIncrementalMode(createPostElement);
+                renderPosts(posts, null, false, createPostElement, getCachedNews());
             }
         });
     });
@@ -246,9 +275,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     const commentTextarea = document.getElementById('comment-textarea');
     const commentPostBtn = document.getElementById('comment-post-btn');
 
-    commentModalClose?.addEventListener('click', closeCommentModal);
+    commentModalClose?.addEventListener('click', () => {
+        closeCommentModal();
+        if (cleanupCommentModalTrap) cleanupCommentModalTrap();
+    });
     commentModalOverlay?.addEventListener('click', (e) => {
-        if (e.target === commentModalOverlay) closeCommentModal();
+        if (e.target === commentModalOverlay) {
+            closeCommentModal();
+            if (cleanupCommentModalTrap) cleanupCommentModalTrap();
+        }
     });
 
     commentTextarea?.addEventListener('input', () => {
@@ -270,6 +305,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             e.stopPropagation();
             const posts = getCurrentPosts();
             openCommentModal(commentAction.dataset.postId, createPostElement, posts);
+            // Setup focus trapping for comment modal
+            if (commentModalOverlay) {
+                cleanupCommentModalTrap = trapFocus(commentModalOverlay, () => {
+                    closeCommentModal();
+                    if (cleanupCommentModalTrap) cleanupCommentModalTrap();
+                });
+            }
             return;
         }
 
@@ -280,7 +322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const postId = heartAction.dataset.postId;
 
             toggleFirestoreLike(postId).then(isNowLiked => {
-                heartAction.classList.toggle('liked', isNowLiked);
+                heartAction.classList.toggle('active', isNowLiked);
                 const countSpan = heartAction.querySelector('span');
                 if (countSpan) {
                     const currentCount = parseInt(countSpan.textContent) || 0;
@@ -294,8 +336,77 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (deleteBtn) {
             e.preventDefault();
             e.stopPropagation();
-            if (confirm('¿Eliminar este post?')) {
-                deleteFirestorePost(deleteBtn.dataset.postId);
+            const postId = deleteBtn.dataset.postId;
+            const postElement = deleteBtn.closest('.post');
+
+            // Hide post immediately for instant feedback
+            if (postElement) {
+                postElement.style.opacity = '0.3';
+                postElement.style.pointerEvents = 'none';
+            }
+
+            // Show undo toast with 4 second timeout
+            let undoClicked = false;
+            const undoToast = document.createElement('div');
+            undoToast.className = 'toast undo-toast show';
+            undoToast.innerHTML = `
+                Publicación eliminada 
+                <button class="undo-btn">Deshacer</button>
+            `;
+            document.body.appendChild(undoToast);
+
+            // Undo button handler
+            undoToast.querySelector('.undo-btn').addEventListener('click', () => {
+                undoClicked = true;
+                if (postElement) {
+                    postElement.style.opacity = '1';
+                    postElement.style.pointerEvents = 'auto';
+                }
+                undoToast.remove();
+                showToast('Post restaurado');
+            });
+
+            // Delete after timeout if not undone
+            setTimeout(() => {
+                if (!undoClicked) {
+                    deleteFirestorePost(postId);
+                    undoToast.remove();
+                }
+            }, 4000);
+
+            return;
+        }
+
+        // Hashtag click - navigate to explore with search
+        const hashtagClick = e.target.closest('.hashtag');
+        if (hashtagClick) {
+            e.preventDefault();
+            e.stopPropagation();
+            const tag = hashtagClick.dataset.tag;
+            if (tag) {
+                showExplore();
+                // Set search input value if explore has a search field
+                setTimeout(() => {
+                    const searchInput = document.querySelector('#explore-search, .explore-search input');
+                    if (searchInput) {
+                        searchInput.value = '#' + tag;
+                        searchInput.dispatchEvent(new Event('input'));
+                    }
+                }, 100);
+                showToast(`Buscando #${tag}`);
+            }
+            return;
+        }
+
+        // Mention click - navigate to user profile
+        const mentionClick = e.target.closest('.mention');
+        if (mentionClick) {
+            e.preventDefault();
+            e.stopPropagation();
+            const username = mentionClick.dataset.username;
+            if (username) {
+                // TODO: In future, search for user by username and show profile
+                showToast(`Perfil de @${username}`);
             }
             return;
         }
@@ -372,9 +483,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const commentModalOverlay = document.getElementById('comment-modal-overlay');
             if (modalOverlay?.classList.contains('active')) {
                 modalOverlay.classList.remove('active');
+                if (cleanupPostModalTrap) cleanupPostModalTrap();
             }
             if (commentModalOverlay?.classList.contains('active')) {
                 closeCommentModal();
+                if (cleanupCommentModalTrap) cleanupCommentModalTrap();
             }
         }
     });

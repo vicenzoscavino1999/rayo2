@@ -2,7 +2,7 @@
 // Configuración de Firebase para Rayo ⚡
 
 import { initializeApp } from "firebase/app";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, updateProfile, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, sendPasswordResetEmail, sendEmailVerification } from "firebase/auth";
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, where, getDoc, setDoc } from "firebase/firestore";
 
 // Tu configuración de Firebase desde variables de entorno
@@ -46,8 +46,14 @@ async function registerUser(email, password, displayName, username) {
             bio: "",
             followers: [],
             following: [],
+            verified: false,
+            verifiedColor: null,
             createdAt: serverTimestamp()
         });
+
+        // SECURITY FIX: Send email verification
+        await sendEmailVerification(user);
+        console.log('✅ Email de verificación enviado a:', email);
 
         return { success: true, user };
     } catch (error) {
@@ -75,33 +81,79 @@ async function logoutUser() {
     }
 }
 
-// Iniciar sesión con Google
+// Helper function to create/update user in Firestore
+async function createOrUpdateUser(user) {
+    const userDoc = await getDoc(doc(db, "users", user.uid));
+
+    if (!userDoc.exists()) {
+        const username = user.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+        await setDoc(doc(db, "users", user.uid), {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || username,
+            username: username,
+            photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
+            bio: "",
+            followers: [],
+            following: [],
+            verified: false,
+            verifiedColor: null,
+            createdAt: serverTimestamp()
+        });
+    }
+    return user;
+}
+
+// Iniciar sesión con Google (Soporte para Popup y Redirect)
 async function loginWithGoogle() {
     try {
         const provider = new GoogleAuthProvider();
-        const result = await signInWithPopup(auth, provider);
-        const user = result.user;
+        provider.setCustomParameters({
+            prompt: 'select_account'
+        });
 
-        // Verificar si el usuario ya existe en Firestore
-        const userDoc = await getDoc(doc(db, "users", user.uid));
+        // Only use redirect for PWA standalone mode - Safari popup works better otherwise
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true; // iOS check
 
-        if (!userDoc.exists()) {
-            // Crear documento de usuario si no existe
-            const username = user.email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
-            await setDoc(doc(db, "users", user.uid), {
-                uid: user.uid,
-                email: user.email,
-                displayName: user.displayName || username,
-                username: username,
-                photoURL: user.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
-                bio: "",
-                followers: [],
-                following: [],
-                createdAt: serverTimestamp()
-            });
+        if (isStandalone) {
+            // Use Redirect ONLY for PWA standalone to avoid popup blocking
+            console.log('[Auth] Using redirect for PWA standalone mode');
+            await signInWithRedirect(auth, provider);
+            return { success: false, redirecting: true };
+        } else {
+            // Use Popup for everything else (desktop AND mobile Safari)
+            console.log('[Auth] Using popup for browser');
+            try {
+                const result = await signInWithPopup(auth, provider);
+                const user = await createOrUpdateUser(result.user);
+                return { success: true, user };
+            } catch (popupError) {
+                // If popup is blocked, try redirect as fallback
+                if (popupError.code === 'auth/popup-blocked' ||
+                    popupError.code === 'auth/popup-closed-by-user') {
+                    console.log('[Auth] Popup blocked/closed, falling back to redirect');
+                    await signInWithRedirect(auth, provider);
+                    return { success: false, redirecting: true };
+                }
+                throw popupError;
+            }
         }
+    } catch (error) {
+        console.error('[Auth] Login error:', error);
+        return { success: false, error: error.message };
+    }
+}
 
-        return { success: true, user };
+// Handle Page Reload after Redirect Login
+async function checkRedirectResult() {
+    try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+            const user = await createOrUpdateUser(result.user);
+            return { success: true, user };
+        }
+        return { success: false, noResult: true };
     } catch (error) {
         return { success: false, error: error.message };
     }
@@ -308,6 +360,7 @@ export {
     registerUser,
     loginUser,
     loginWithGoogle,
+    checkRedirectResult,
     logoutUser,
     getCurrentUser,
     onAuthChange,

@@ -7,13 +7,19 @@
     "scripts": {
         "dev": "vite",
         "build": "vite build",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "test": "vitest run"
     },
     "dependencies": {
-        "firebase": "^10.7.1"
+        "firebase": "^10.7.1",
+        "firebase-admin": "^13.6.0",
+        "lucide": "^0.562.0"
     },
     "devDependencies": {
-        "vite": "^6.0.0"
+        "happy-dom": "^20.0.11",
+        "jsdom": "^27.0.1",
+        "vite": "^6.0.0",
+        "vitest": "^4.0.16"
     },
     "keywords": [
         "social-network",

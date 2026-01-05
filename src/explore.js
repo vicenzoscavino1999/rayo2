@@ -2,6 +2,7 @@
 // Rayo Social Network - Modularized
 
 import { sanitizeHTML } from '../utils.js';
+import { createIcons, icons } from 'lucide';
 
 // Module state
 let db, collection, getDocs, query, limit;
@@ -53,7 +54,7 @@ export async function showExplore() {
     `;
 
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     // Close button
     document.getElementById('explore-close-btn')?.addEventListener('click', () => {
@@ -68,7 +69,7 @@ export async function showExplore() {
 
         if (snapshot.empty) {
             resultsContainer.innerHTML = '<div class="explore-empty"><i data-lucide="user-x"></i><p>No hay usuarios registrados aún.</p></div>';
-            if (window.lucide) window.lucide.createIcons();
+            createIcons({ icons });
         } else {
             resultsContainer.innerHTML = '';
             snapshot.forEach(doc => {
@@ -76,7 +77,7 @@ export async function showExplore() {
                 const userEl = createUserCard(userData, doc.id);
                 resultsContainer.appendChild(userEl);
             });
-            if (window.lucide) window.lucide.createIcons();
+            createIcons({ icons });
         }
 
         // Search functionality
@@ -96,11 +97,11 @@ export async function showExplore() {
                 }
             });
 
-            if (window.lucide) window.lucide.createIcons();
+            createIcons({ icons });
 
             if (!foundAny) {
                 resultsContainer.innerHTML = '<div class="explore-empty"><i data-lucide="search-x"></i><p>No se encontraron coincidencias.</p></div>';
-                if (window.lucide) window.lucide.createIcons();
+                createIcons({ icons });
             }
         });
 

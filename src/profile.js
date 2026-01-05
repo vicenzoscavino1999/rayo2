@@ -1,14 +1,26 @@
 // src/profile.js - Profile display and editing
 // Rayo Social Network - Modularized
 
-import { cloudinaryConfig, getCloudinaryUploadUrl, sanitizeHTML, safeUrl, safeAttr } from '../utils.js';
+import { getAuth } from 'firebase/auth';
+import { cloudinaryConfig, getCloudinaryUploadUrl, sanitizeHTML, safeUrl, safeAttr, getCloudinarySignature } from '../utils.js';
+import { createIcons, icons } from 'lucide';
 
 // Module state
-let db, collection, getDocs, query, orderBy, where, doc, getDoc, updateDoc, limit, arrayUnion, arrayRemove;
+let db, collection, getDocs, query, orderBy, where, doc, getDoc, updateDoc, setDoc, deleteDoc, limit, startAfter, arrayUnion, arrayRemove, serverTimestamp;
 let currentUser = null;
 let onToast = null;
 let showFeedCallback = null;
 let createPostElementCallback = null;
+
+// Profile pagination state
+let lastProfilePostDoc = null;
+let isLoadingMorePosts = false;
+let hasMoreProfilePosts = true;
+let currentProfileUserId = null;
+const PROFILE_POSTS_PER_PAGE = 20;
+
+// Feature flag: Use subcollection-based follows (Phase 3A)
+const USE_SUBCOLLECTION_FOLLOWS = true;
 
 // Initialize profile module
 export async function initProfileModule(user, toastCallback, feedCallback, postElementCallback) {
@@ -29,11 +41,43 @@ export async function initProfileModule(user, toastCallback, feedCallback, postE
     doc = firestore.doc;
     getDoc = firestore.getDoc;
     updateDoc = firestore.updateDoc;
+    setDoc = firestore.setDoc;
+    deleteDoc = firestore.deleteDoc;
     limit = firestore.limit;
+    startAfter = firestore.startAfter;
     arrayUnion = firestore.arrayUnion;
     arrayRemove = firestore.arrayRemove;
+    serverTimestamp = firestore.serverTimestamp;
+
+    // Initialize local cache of following list if using subcollections
+    if (USE_SUBCOLLECTION_FOLLOWS && currentUser) {
+        await fetchUserFollowing();
+    }
 
     return true;
+}
+
+// Fetch user's following list from subcollection (for client-side filtering)
+async function fetchUserFollowing() {
+    if (!currentUser) return;
+    try {
+        const followingRef = collection(db, "users", currentUser.uid, "following");
+        // Limit to 2000 for performance (client-side filter limit)
+        // For >2000 follows, a proper feed service would be needed
+        const q = query(followingRef, limit(2000));
+        const snapshot = await getDocs(q);
+
+        const followingIds = [];
+        snapshot.forEach(doc => followingIds.push(doc.id));
+
+        // Update local cache
+        currentUser.following = followingIds;
+        console.log(`Updated local following cache: ${followingIds.length} users`);
+    } catch (e) {
+        console.error("Error fetching following list:", e);
+        // Fallback to array if it exists
+        if (!currentUser.following) currentUser.following = [];
+    }
 }
 
 // Update current user reference
@@ -46,7 +90,7 @@ export async function showProfile(userId) {
     const container = document.getElementById('posts-container');
 
     container.innerHTML = '<div class="loading-spinner"><i data-lucide="loader-2" class="animate-spin"></i></div>';
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     try {
         // Fetch User Data
@@ -79,14 +123,31 @@ export async function showProfile(userId) {
             following: userInfo.following || []
         };
 
-        // Fetch User Posts
+        // Reset pagination state
+        currentProfileUserId = userId;
+        lastProfilePostDoc = null;
+        hasMoreProfilePosts = true;
+        isLoadingMorePosts = false;
+
+        // Fetch User Posts (first page with limit)
         const postsRef = collection(db, "posts");
-        const q = query(postsRef, where("authorId", "==", userId), orderBy("createdAt", "desc"));
+        const q = query(
+            postsRef,
+            where("authorId", "==", userId),
+            orderBy("createdAt", "desc"),
+            limit(PROFILE_POSTS_PER_PAGE)
+        );
         const querySnapshot = await getDocs(q);
         const userPosts = [];
         querySnapshot.forEach((docSnap) => {
             userPosts.push({ id: docSnap.id, ...docSnap.data() });
         });
+
+        // Store last doc for pagination
+        if (querySnapshot.docs.length > 0) {
+            lastProfilePostDoc = querySnapshot.docs[querySnapshot.docs.length - 1];
+        }
+        hasMoreProfilePosts = querySnapshot.docs.length >= PROFILE_POSTS_PER_PAGE;
 
         // Render Profile Header
         const header = document.querySelector('.feed-header');
@@ -107,11 +168,26 @@ export async function showProfile(userId) {
             verifiedIcon = `<i data-lucide="check-circle" class="verified-icon ${colorClass}"></i>`;
         }
 
+
         // Check Follow Status
         let isFollowingUser = false;
         if (currentUser && currentUser.uid !== userId) {
-            if (currentUser.following && Array.isArray(currentUser.following)) {
-                isFollowingUser = currentUser.following.includes(userId);
+            if (USE_SUBCOLLECTION_FOLLOWS) {
+                // NEW: Check subcollection for follow status
+                try {
+                    const followDocRef = doc(db, "users", currentUser.uid, "following", userId);
+                    const followDoc = await getDoc(followDocRef);
+                    isFollowingUser = followDoc.exists();
+                } catch (err) {
+                    console.error("Error checking follow status:", err);
+                    // Fallback to array check
+                    isFollowingUser = currentUser.following?.includes(userId) || false;
+                }
+            } else {
+                // LEGACY: Check array
+                if (currentUser.following && Array.isArray(currentUser.following)) {
+                    isFollowingUser = currentUser.following.includes(userId);
+                }
             }
         }
 
@@ -124,8 +200,9 @@ export async function showProfile(userId) {
             '<button class="btn-edit-profile">Editar perfil</button>' :
             `${messageBtn}<button class="btn-follow-profile ${isFollowingUser ? 'following' : ''}" data-user-id="${userId}">${isFollowingUser ? 'Siguiendo' : 'Seguir'}</button>`;
 
-        const followersCount = userInfo.followers.length;
-        const followingCount = userInfo.following.length;
+        // Use counter fields if available, fallback to array length
+        const followersCount = userInfo.followerCount ?? userInfo.followers?.length ?? 0;
+        const followingCount = userInfo.followingCount ?? userInfo.following?.length ?? 0;
 
         container.innerHTML = `
             <div class="profile-card">
@@ -158,11 +235,23 @@ export async function showProfile(userId) {
             profilePostsContainer.innerHTML = '<div class="empty-state"><p>Este usuario no tiene publicaciones</p></div>';
         } else {
             userPosts.forEach(post => {
-                profilePostsContainer.appendChild(createPostElementCallback(post));
+                const data = post;
+                data.createdAt = data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now();
+                profilePostsContainer.appendChild(createPostElementCallback(data));
             });
+
+            // Add "Load more" button if there are more posts
+            if (hasMoreProfilePosts) {
+                const loadMoreBtn = document.createElement('button');
+                loadMoreBtn.className = 'load-more-posts-btn';
+                loadMoreBtn.id = 'load-more-profile-posts';
+                loadMoreBtn.innerHTML = '<i data-lucide="chevrons-down"></i> Cargar más posts';
+                loadMoreBtn.addEventListener('click', loadMoreProfilePosts);
+                profilePostsContainer.appendChild(loadMoreBtn);
+            }
         }
 
-        if (window.lucide) window.lucide.createIcons();
+        createIcons({ icons });
 
         // Event Listeners
         document.getElementById('btn-back')?.addEventListener('click', () => {
@@ -179,6 +268,7 @@ export async function showProfile(userId) {
                 followBtn.textContent = isNowFollowing ? 'Siguiendo' : 'Seguir';
                 followBtn.classList.toggle('following', isNowFollowing);
 
+                // Optimistic UI update for counter
                 const statsSpans = container.querySelectorAll('.profile-stats span');
                 if (statsSpans[1]) {
                     let currentCount = parseInt(statsSpans[1].querySelector('strong').textContent);
@@ -186,22 +276,49 @@ export async function showProfile(userId) {
                 }
 
                 try {
-                    const myRef = doc(db, "users", currentUser.uid);
-                    const targetRef = doc(db, "users", userId);
+                    if (USE_SUBCOLLECTION_FOLLOWS) {
+                        // ============================================================
+                        // NEW: Subcollection-based follow (Phase 3A)
+                        // Only write to MY following subcollection
+                        // Cloud Functions handle: mirror doc + counters
+                        // ============================================================
+                        const followDocRef = doc(db, "users", currentUser.uid, "following", userId);
 
-                    if (isNowFollowing) {
-                        await updateDoc(myRef, { following: arrayUnion(userId) });
-                        await updateDoc(targetRef, { followers: arrayUnion(currentUser.uid) });
-                        if (currentUser.following) currentUser.following.push(userId);
+                        if (isNowFollowing) {
+                            await setDoc(followDocRef, { createdAt: serverTimestamp() });
+                            // Maintain local cache for "Siguiendo" filter
+                            if (!currentUser.following) currentUser.following = [];
+                            if (!currentUser.following.includes(userId)) currentUser.following.push(userId);
+                        } else {
+                            await deleteDoc(followDocRef);
+                            // Maintain local cache for "Siguiendo" filter
+                            if (currentUser.following) {
+                                currentUser.following = currentUser.following.filter(id => id !== userId);
+                            }
+                        }
                     } else {
-                        await updateDoc(myRef, { following: arrayRemove(userId) });
-                        await updateDoc(targetRef, { followers: arrayRemove(currentUser.uid) });
-                        if (currentUser.following) {
-                            currentUser.following = currentUser.following.filter(id => id !== userId);
+                        // LEGACY: Array-based follow (backward compatibility)
+                        const myRef = doc(db, "users", currentUser.uid);
+                        const targetRef = doc(db, "users", userId);
+
+                        if (isNowFollowing) {
+                            await updateDoc(myRef, { following: arrayUnion(userId) });
+                            await updateDoc(targetRef, { followers: arrayUnion(currentUser.uid) });
+                            if (currentUser.following) currentUser.following.push(userId);
+                        } else {
+                            await updateDoc(myRef, { following: arrayRemove(userId) });
+                            await updateDoc(targetRef, { followers: arrayRemove(currentUser.uid) });
+                            if (currentUser.following) {
+                                currentUser.following = currentUser.following.filter(id => id !== userId);
+                            }
                         }
                     }
                 } catch (err) {
                     console.error("Error updating follow status:", err);
+                    // Revert UI on error
+                    followBtn.textContent = isNowFollowing ? 'Seguir' : 'Siguiendo';
+                    followBtn.classList.toggle('following', !isNowFollowing);
+                    if (onToast) onToast('Error al actualizar follow');
                 }
             });
         }
@@ -231,6 +348,77 @@ export async function showProfile(userId) {
     } catch (error) {
         console.error("Error in showProfile:", error);
         container.innerHTML = `<div class="error-message">Error al cargar perfil: ${error.message}</div>`;
+    }
+}
+
+// Load more posts for profile pagination
+async function loadMoreProfilePosts() {
+    if (!lastProfilePostDoc || !hasMoreProfilePosts || isLoadingMorePosts) return;
+
+    isLoadingMorePosts = true;
+    const loadBtn = document.getElementById('load-more-profile-posts');
+    if (loadBtn) {
+        loadBtn.innerHTML = '<i data-lucide="loader-2" class="spin"></i> Cargando...';
+        loadBtn.disabled = true;
+    }
+
+    try {
+        const postsRef = collection(db, "posts");
+        const q = query(
+            postsRef,
+            where("authorId", "==", currentProfileUserId),
+            orderBy("createdAt", "desc"),
+            startAfter(lastProfilePostDoc),
+            limit(PROFILE_POSTS_PER_PAGE)
+        );
+
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            hasMoreProfilePosts = false;
+            if (loadBtn) loadBtn.remove();
+            return;
+        }
+
+        const profilePostsContainer = document.getElementById('profile-posts-container');
+
+        // Update last doc
+        if (snapshot.docs.length > 0) {
+            lastProfilePostDoc = snapshot.docs[snapshot.docs.length - 1];
+        }
+
+        // Check if more posts available
+        if (snapshot.docs.length < PROFILE_POSTS_PER_PAGE) {
+            hasMoreProfilePosts = false;
+            if (loadBtn) loadBtn.remove();
+        } else if (loadBtn) {
+            loadBtn.innerHTML = '<i data-lucide="chevrons-down"></i> Cargar más posts';
+            loadBtn.disabled = false;
+        }
+
+        // Insert posts before the load button
+        snapshot.forEach(docSnap => {
+            const post = { id: docSnap.id, ...docSnap.data() };
+            post.createdAt = post.createdAt?.toMillis ? post.createdAt.toMillis() : Date.now();
+            const postElement = createPostElementCallback(post);
+
+            if (loadBtn) {
+                profilePostsContainer.insertBefore(postElement, loadBtn);
+            } else {
+                profilePostsContainer.appendChild(postElement);
+            }
+        });
+
+        createIcons({ icons });
+
+    } catch (error) {
+        console.error('Error loading more posts:', error);
+        if (loadBtn) {
+            loadBtn.innerHTML = '<i data-lucide="chevrons-down"></i> Error - Reintentar';
+            loadBtn.disabled = false;
+        }
+    } finally {
+        isLoadingMorePosts = false;
     }
 }
 
@@ -289,7 +477,7 @@ export function showEditProfileModal(userInfo) {
     `;
 
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     const modal = document.getElementById('edit-profile-modal');
     const nameInput = document.getElementById('edit-name');
@@ -340,10 +528,18 @@ export function showEditProfileModal(userInfo) {
         uploadStatus.className = 'edit-upload-status uploading';
 
         try {
+            // SECURITY FIX: Use signed uploads
+            const auth = getAuth();
+            const idToken = await auth.currentUser.getIdToken();
+
+            // Get signature from Cloud Function
+            const { signature, timestamp } = await getCloudinarySignature(idToken);
+
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-            formData.append('cloud_name', cloudinaryConfig.cloudName);
+            formData.append('signature', signature);
+            formData.append('timestamp', timestamp);
+            formData.append('api_key', import.meta.env.VITE_CLOUDINARY_API_KEY);
 
             const response = await fetch(getCloudinaryUploadUrl(), {
                 method: 'POST',

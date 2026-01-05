@@ -2,6 +2,7 @@
 // Rayo Social Network - Modularized
 
 import { sanitizeHTML, getTimeAgo, safeUrl, safeAttr } from '../utils.js';
+import { createIcons } from 'lucide';
 
 // Module state
 let db, collection, addDoc, getDocs, query, orderBy, limit, doc, updateDoc, serverTimestamp, increment;
@@ -107,7 +108,7 @@ export async function openCommentModal(postId, createPostElement, posts) {
     container.appendChild(createPostElement(post));
 
     commentsContainer.innerHTML = '<div class="loading-comments"><i data-lucide="loader-2" class="spin"></i> Cargando...</div>';
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     const comments = await loadCommentsForPost(postId);
     commentsContainer.innerHTML = '';
@@ -121,7 +122,7 @@ export async function openCommentModal(postId, createPostElement, posts) {
     }
 
     modal.classList.add('active');
-    if (window.lucide) window.lucide.createIcons();
+    createIcons({ icons });
 
     setTimeout(() => document.getElementById('comment-textarea')?.focus(), 100);
 }

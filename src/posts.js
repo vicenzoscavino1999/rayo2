@@ -1,12 +1,14 @@
 // src/posts.js - Posts CRUD, rendering, and Firestore operations
 // Rayo Social Network - Modularized
 
-import { sanitizeHTML, getTimeAgo, formatNumber, cloudinaryConfig, isCloudinaryConfigured, safeUrl, safeAttr } from '../utils.js';
+import { getAuth } from 'firebase/auth';
+import { sanitizeHTML, getTimeAgo, formatNumber, cloudinaryConfig, isCloudinaryConfigured, safeUrl, safeAttr, getCloudinarySignature } from '../utils.js';
+import { createIcons } from 'lucide';
 
 // Module state
 let db, collection, addDoc, getDocs, query, orderBy, limit, onSnapshot,
     doc, updateDoc, deleteDoc, serverTimestamp, getDoc, setDoc,
-    arrayUnion, arrayRemove, startAfter, increment;
+    arrayUnion, arrayRemove, startAfter, increment, where, documentId;
 
 let currentUser = null;
 let currentFirestorePosts = [];
@@ -15,6 +17,17 @@ let lastVisibleDoc = null;
 let isLoadingMore = false;
 let hasMorePosts = true;
 const POSTS_PER_PAGE = 20;
+
+// Incremental rendering state
+let postsMap = new Map(); // Map<postId, { data: post, element: HTMLElement }>
+let isIncrementalMode = false; // True when feed is in "Para ti" tab without filters
+let currentCreatePostElement = null; // Cached reference to createPostElement function
+
+// Feature flag: Use subcollection-based likes (Phase 3B)
+const USE_SUBCOLLECTION_LIKES = true;
+
+// Cache of user's liked posts (for rendering)
+let userLikedPosts = new Set();
 
 // Callbacks for UI updates
 let onPostsUpdate = null;
@@ -46,8 +59,41 @@ export async function initPostsModule(user, toastCallback) {
     arrayRemove = firestore.arrayRemove;
     startAfter = firestore.startAfter;
     increment = firestore.increment;
+    where = firestore.where;
+    documentId = firestore.documentId;
 
     return true;
+}
+
+// Fetch likes for a specific set of posts (Phase 3B)
+async function fetchUserLikesForPosts(posts) {
+    if (!currentUser || posts.length === 0) return;
+
+    // Only needed if using subcollections
+    if (!USE_SUBCOLLECTION_LIKES) return;
+
+    try {
+        const postIds = posts.map(p => p.id);
+        // Process in chunks of 10 (Firestore 'in' limit is 30, but keeping it safe/small)
+        const chunkSize = 10;
+
+        for (let i = 0; i < postIds.length; i += chunkSize) {
+            const chunk = postIds.slice(i, i + chunkSize);
+            if (chunk.length === 0) continue;
+
+            const q = query(
+                collection(db, "users", currentUser.uid, "likes"),
+                where(documentId(), "in", chunk)
+            );
+
+            const snapshot = await getDocs(q);
+            snapshot.forEach(docSnap => {
+                userLikedPosts.add(docSnap.id);
+            });
+        }
+    } catch (e) {
+        console.error("Error fetching user likes:", e);
+    }
 }
 
 // Update current user reference
@@ -60,7 +106,7 @@ export function getCurrentPosts() {
     return currentFirestorePosts;
 }
 
-// Subscribe to real-time posts
+// Subscribe to real-time posts with incremental rendering
 export function subscribeToFirestorePosts(callback) {
     onPostsUpdate = callback;
 
@@ -70,9 +116,26 @@ export function subscribeToFirestorePosts(callback) {
         limit(POSTS_PER_PAGE)
     );
 
-    unsubscribePosts = onSnapshot(q, (snapshot) => {
+    unsubscribePosts = onSnapshot(q, async (snapshot) => {
+        // Update pagination state
+        if (snapshot.docs.length > 0) {
+            lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
+            hasMorePosts = snapshot.docs.length === POSTS_PER_PAGE;
+        } else {
+            hasMorePosts = false;
+        }
+
+        // Process changes incrementally if in incremental mode
+        if (isIncrementalMode && currentCreatePostElement) {
+            snapshot.docChanges().forEach((change) => {
+                processSingleDocChange(change);
+            });
+            return; // Skip full re-render
+        }
+
+        // Full re-render mode (e.g. initial load or filter change)
         const posts = [];
-        snapshot.forEach(docSnap => {
+        snapshot.forEach((docSnap) => {
             const data = docSnap.data();
             posts.push({
                 id: docSnap.id,
@@ -81,23 +144,139 @@ export function subscribeToFirestorePosts(callback) {
             });
         });
 
-        if (snapshot.docs.length > 0) {
-            lastVisibleDoc = snapshot.docs[snapshot.docs.length - 1];
-            hasMorePosts = snapshot.docs.length === POSTS_PER_PAGE;
-        } else {
-            hasMorePosts = false;
-        }
-
         currentFirestorePosts = posts;
+
+        // Phase 3B: Fetch likes state for these posts
+        if (USE_SUBCOLLECTION_LIKES && currentUser) {
+            await fetchUserLikesForPosts(posts);
+        }
 
         if (onPostsUpdate) {
             onPostsUpdate(posts);
         }
     }, (error) => {
-        console.error('Error subscribing to posts:', error);
+        console.error("Error subscribing to posts:", error);
+        if (onToast) onToast('Error de conexión');
     });
 
     return unsubscribePosts;
+}
+
+// Process a single document change (called for each change in docChanges)
+function processSingleDocChange(change) {
+    const container = document.getElementById('posts-container');
+    if (!container) return;
+
+    const docSnap = change.doc;
+    const postId = docSnap.id;
+    const data = docSnap.data();
+    const post = {
+        id: postId,
+        ...data,
+        createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : Date.now()
+    };
+
+    if (change.type === 'added') {
+        handlePostAdded(container, post, change.newIndex);
+    } else if (change.type === 'modified') {
+        handlePostModified(post);
+    } else if (change.type === 'removed') {
+        handlePostRemoved(postId);
+    }
+
+    // Re-render icons after changes
+    if (typeof createIcons === 'function') {
+        createIcons({ icons });
+    }
+}
+
+// Handle a new post being added
+function handlePostAdded(container, post, newIndex) {
+    // Skip if already in map (can happen on initial load)
+    if (postsMap.has(post.id)) return;
+
+    const element = currentCreatePostElement(post);
+    postsMap.set(post.id, { data: post, element });
+
+    // Insert at correct position based on newIndex
+    const children = container.querySelectorAll('.post:not(.news-post)');
+
+    if (newIndex === 0) {
+        // New post at top - insert before first post or at beginning
+        const firstPost = container.querySelector('.post');
+        if (firstPost) {
+            container.insertBefore(element, firstPost);
+        } else {
+            container.prepend(element);
+        }
+    } else if (newIndex >= children.length) {
+        // Append at end
+        container.appendChild(element);
+    } else {
+        // Insert at specific position
+        container.insertBefore(element, children[newIndex]);
+    }
+}
+
+// Handle a post being modified (likes, comments, etc.)
+function handlePostModified(post) {
+    const entry = postsMap.get(post.id);
+    if (!entry) return;
+
+    // Update the data
+    entry.data = post;
+
+    // Update specific UI elements without re-creating the whole post
+    const element = entry.element;
+    if (!element) return;
+
+    // Update like count and state using likeCount field (not likes array)
+    const likeAction = element.querySelector('.action-heart');
+    if (likeAction) {
+        // Use userLikedPosts set for liked state, likeCount field for count
+        const isLiked = userLikedPosts.has(post.id);
+        const likeCount = post.likeCount || 0;
+        likeAction.classList.toggle('active', isLiked);
+        const likeSpan = likeAction.querySelector('span');
+        if (likeSpan) likeSpan.textContent = likeCount;
+    }
+
+    // Update comment count
+    const commentAction = element.querySelector('.action-comment span');
+    if (commentAction) {
+        commentAction.textContent = post.commentCount || 0;
+    }
+
+    // Update views
+    const viewsSpan = element.querySelector('.post-action:nth-child(4) span');
+    if (viewsSpan) {
+        viewsSpan.textContent = formatNumber(post.views || 0);
+    }
+}
+
+// Handle a post being removed
+function handlePostRemoved(postId) {
+    const entry = postsMap.get(postId);
+    if (!entry) return;
+
+    if (entry.element && entry.element.parentNode) {
+        entry.element.parentNode.removeChild(entry.element);
+    }
+
+    postsMap.delete(postId);
+}
+
+// Enable incremental mode (call when showing "Para ti" unfiltered feed)
+export function enableIncrementalMode(createPostElement) {
+    isIncrementalMode = true;
+    currentCreatePostElement = createPostElement;
+    postsMap.clear();
+}
+
+// Disable incremental mode (call when switching tabs or applying filters)
+export function disableIncrementalMode() {
+    isIncrementalMode = false;
+    postsMap.clear();
 }
 
 // Unsubscribe from posts
@@ -106,6 +285,7 @@ export function unsubscribeFromPosts() {
         unsubscribePosts();
         unsubscribePosts = null;
     }
+    disableIncrementalMode();
 }
 
 // Load more posts for infinite scroll
@@ -149,12 +329,16 @@ export async function loadMorePosts(container, createPostElement) {
         currentFirestorePosts = [...currentFirestorePosts, ...newPosts];
 
         newPosts.forEach(post => {
-            container.appendChild(createPostElement(post));
+            const element = createPostElement(post);
+            container.appendChild(element);
+
+            // Register in postsMap if in incremental mode
+            if (isIncrementalMode) {
+                postsMap.set(post.id, { data: post, element });
+            }
         });
 
-        if (window.lucide) {
-            window.lucide.createIcons();
-        }
+        createIcons({ icons });
 
     } catch (error) {
         console.error('Error loading more posts:', error);
@@ -265,7 +449,7 @@ export async function createFirestorePost(content, mediaData = null, mediaType =
     }
 }
 
-// Upload media to Cloudinary
+// Upload media to Cloudinary (SECURE - Signed uploads)
 async function uploadToCloudinary(file, mediaType = 'image') {
     if (!isCloudinaryConfigured()) {
         console.error('Cloudinary not configured');
@@ -273,10 +457,18 @@ async function uploadToCloudinary(file, mediaType = 'image') {
     }
 
     try {
+        // Get current user's ID token
+        const auth = getAuth();
+        const idToken = await auth.currentUser.getIdToken();
+
+        // Get signature from Cloud Function (SECURITY FIX)
+        const { signature, timestamp } = await getCloudinarySignature(idToken);
+
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('upload_preset', cloudinaryConfig.uploadPreset);
-        formData.append('cloud_name', cloudinaryConfig.cloudName);
+        formData.append('signature', signature);
+        formData.append('timestamp', timestamp);
+        formData.append('api_key', import.meta.env.VITE_CLOUDINARY_API_KEY);
 
         // Use different endpoint for video vs image
         const resourceType = mediaType === 'video' ? 'video' : 'image';
@@ -302,22 +494,44 @@ async function uploadToCloudinary(file, mediaType = 'image') {
 // Toggle like on a post
 export async function toggleFirestoreLike(postId) {
     try {
-        const postRef = doc(db, "posts", postId);
-        const postSnap = await getDoc(postRef);
+        if (USE_SUBCOLLECTION_LIKES) {
+            // ============================================================
+            // NEW: Subcollection-based like (Phase 3B)
+            // Create/delete doc in users/{me}/likes/{postId}
+            // Cloud Functions handle likeCount updates
+            // ============================================================
+            const likeDocRef = doc(db, "users", currentUser.uid, "likes", postId);
+            const likeDoc = await getDoc(likeDocRef);
+            const isLiked = likeDoc.exists();
 
-        if (!postSnap.exists()) return false;
+            if (isLiked) {
+                await deleteDoc(likeDocRef);
+                userLikedPosts.delete(postId);
+            } else {
+                await setDoc(likeDocRef, { createdAt: serverTimestamp() });
+                userLikedPosts.add(postId);
+            }
 
-        const postData = postSnap.data();
-        const likes = postData.likes || [];
-        const isLiked = likes.includes(currentUser.uid);
-
-        if (isLiked) {
-            await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
+            return !isLiked;
         } else {
-            await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
-        }
+            // LEGACY: Array-based like
+            const postRef = doc(db, "posts", postId);
+            const postSnap = await getDoc(postRef);
 
-        return !isLiked;
+            if (!postSnap.exists()) return false;
+
+            const postData = postSnap.data();
+            const likes = postData.likes || [];
+            const isLiked = likes.includes(currentUser.uid);
+
+            if (isLiked) {
+                await updateDoc(postRef, { likes: arrayRemove(currentUser.uid) });
+            } else {
+                await updateDoc(postRef, { likes: arrayUnion(currentUser.uid) });
+            }
+
+            return !isLiked;
+        }
     } catch (error) {
         console.error('Error toggling like:', error);
         return false;
@@ -395,9 +609,7 @@ export function renderPosts(posts, filterUserId = null, filterFollowing = false,
         }
     }
 
-    if (window.lucide) {
-        window.lucide.createIcons();
-    }
+    createIcons({ icons });
 }
 
 // Import createNewsElement for use in renderPosts
@@ -413,8 +625,13 @@ export function createPostElement(post) {
     article.dataset.postId = post.id;
 
     const timeAgo = getTimeAgo(post.createdAt);
-    const isLiked = post.likes?.includes(currentUser?.uid);
-    const likeCount = post.likes?.length || 0;
+
+    // FIX #5: Use likeCount and userLikedPosts instead of post.likes array
+    // Supports both new subcollection model and legacy array model
+    const isLiked = USE_SUBCOLLECTION_LIKES
+        ? userLikedPosts.has(post.id)
+        : post.likes?.includes(currentUser?.uid);
+    const likeCount = post.likeCount ?? post.likes?.length ?? 0;
     const commentCount = typeof post.commentCount === 'number' ? post.commentCount : 0;
 
     const safeName = sanitizeHTML(post.authorName);
@@ -453,7 +670,7 @@ export function createPostElement(post) {
             } else {
                 mediaHtml = `
                     <div class="post-media">
-                        <img src="${safeMediaUrl}" alt="Post image">
+                        <img src="${safeMediaUrl}" alt="Post image" loading="lazy">
                     </div>
                 `;
             }
@@ -499,8 +716,8 @@ export function createPostElement(post) {
 export function formatContent(content) {
     let sanitized = sanitizeHTML(content);
     let formatted = sanitized.replace(/\n/g, '<br>');
-    formatted = formatted.replace(/#(\w+)/g, '<span class="hashtag">#$1</span>');
-    formatted = formatted.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
+    formatted = formatted.replace(/#(\w+)/g, '<a href="#" class="hashtag" data-tag="$1">#$1</a>');
+    formatted = formatted.replace(/@(\w+)/g, '<a href="#" class="mention" data-username="$1">@$1</a>');
     return formatted;
 }
 
@@ -564,7 +781,7 @@ export function handleMediaUpload(file, previewContainer, removeCallback, setPen
             `;
             previewContainer.style.display = 'block';
 
-            if (window.lucide) window.lucide.createIcons();
+            createIcons({ icons });
 
             previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
                 URL.revokeObjectURL(videoUrl);
@@ -589,7 +806,7 @@ export function handleMediaUpload(file, previewContainer, removeCallback, setPen
         `;
         previewContainer.style.display = 'block';
 
-        if (window.lucide) window.lucide.createIcons();
+        createIcons({ icons });
 
         previewContainer.querySelector('.remove-media-btn').addEventListener('click', () => {
             URL.revokeObjectURL(imageUrl);
