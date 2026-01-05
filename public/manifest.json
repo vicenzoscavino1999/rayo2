@@ -1,7 +1,7 @@
 {
-    "name": "Rayo",
-    "short_name": "Rayo",
-    "description": "Red social en tiempo real - Únete a la conversación ⚡",
+    "name": "Scriba",
+    "short_name": "Scriba",
+    "description": "Red social en tiempo real - Únete a la conversación",
     "theme_color": "#030303",
     "background_color": "#030303",
     "display": "standalone",

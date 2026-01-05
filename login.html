@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Rayo ⚡ - Iniciar Sesión</title>
+    <title>Scriba - Iniciar Sesión</title>
 
     <!-- PWA Configuration -->
     <meta name="theme-color" content="#030303">
@@ -13,7 +13,7 @@
     <!-- iOS PWA Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Rayo">
+    <meta name="apple-mobile-web-app-title" content="Scriba">
     <link rel="apple-touch-icon" href="/icon-192.png">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -26,11 +26,11 @@
 <body class="auth-page">
     <div class="auth-container">
         <div class="auth-header">
-            <div class="logo">
-                <i data-lucide="zap"></i>
+            <div class="logo scriba-logo">
+                <img src="/scriba-logo.png" alt="Scriba Logo" class="logo-img">
             </div>
-            <h1>Bienvenido a Rayo</h1>
-            <p>Únete a la conversación ⚡</p>
+            <h1>Bienvenido a Scriba</h1>
+            <p>Únete a la conversación ✍️</p>
         </div>
 
         <div class="auth-tabs">
@@ -110,13 +110,12 @@
                 </button>
             </form>
         </div>
-    </div>
-
-    <!-- Footer con links legales -->
-    <div class="auth-footer">
-        <a href="terms.html">Términos de Servicio</a>
-        <span class="separator">•</span>
-        <a href="privacy.html">Política de Privacidad</a>
+        <!-- Footer con links legales - dentro del container para evitar superposición -->
+        <div class="auth-footer-inline">
+            <a href="terms.html">Términos de Servicio</a>
+            <span class="separator">•</span>
+            <a href="privacy.html">Política de Privacidad</a>
+        </div>
     </div>
 
     <!-- Modal de Recuperar Contraseña -->

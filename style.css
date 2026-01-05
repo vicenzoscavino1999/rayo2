@@ -712,16 +712,62 @@
     align-items: center;
     justify-content: center;
     padding: var(--space-lg);
+    padding-bottom: 60px;
+    /* Space for footer on desktop */
+}
+
+/* Scriba Logo Styles */
+.scriba-logo {
+    background: transparent !important;
+}
+
+.scriba-logo .logo-img {
+    width: 60px;
+    height: 60px;
+    object-fit: contain;
+}
+
+/* Auth Footer Inline (inside container, no overlap) */
+.auth-footer-inline {
+    text-align: center;
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    border-top: 1px solid var(--border);
+    margin-top: var(--space-md);
+}
+
+.auth-footer-inline a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    transition: color 0.2s;
+}
+
+.auth-footer-inline a:hover {
+    color: var(--text-secondary);
+}
+
+.auth-footer-inline .separator {
+    color: var(--text-muted);
+    opacity: 0.5;
+    margin: 0 var(--space-sm);
 }
 
 /* Auth Responsive */
 @media (max-width: 480px) {
+    .auth-page {
+        padding-bottom: var(--space-lg);
+    }
+
     .auth-header {
         padding: 30px 24px 16px;
     }
 
     .auth-forms {
         padding: var(--space-lg);
+    }
+
+    .auth-footer-inline {
+        padding: var(--space-md);
     }
 }
 
@@ -770,6 +816,26 @@ body {
     height: 32px;
     color: var(--primary);
     fill: var(--primary);
+}
+
+/* Sidebar Logo (Scriba) */
+.sidebar-logo {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.sidebar-logo-img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    filter: brightness(0) invert(1);
+    /* Make white on dark background */
+    transition: transform 0.2s;
+}
+
+.sidebar-logo-img:hover {
+    transform: scale(1.1);
 }
 
 .nav-menu {
