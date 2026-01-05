@@ -2,17 +2,18 @@
  * Migration script using Firebase client SDK (no gcloud auth needed)
  */
 
+import 'dotenv/config';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, getDocs, doc, setDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 
-// Firebase config from your project
+// Firebase config from environment variables
 const firebaseConfig = {
-    apiKey: "AIzaSyD-Ks0a7gTmP_9dJdEbSLw4jGb_X2qk8cM",
-    authDomain: "rayo-app-47718.firebaseapp.com",
-    projectId: "rayo-app-47718",
-    storageBucket: "rayo-app-47718.firebasestorage.app",
-    messagingSenderId: "589827662688",
-    appId: "1:589827662688:web:b6c3c64e0d8f0fbacfd83f"
+    apiKey: process.env.VITE_FIREBASE_API_KEY,
+    authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.VITE_FIREBASE_APP_ID
 };
 
 const app = initializeApp(firebaseConfig);
