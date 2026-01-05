@@ -829,8 +829,9 @@ body {
     width: 36px;
     height: 36px;
     object-fit: contain;
-    filter: brightness(0) invert(1);
-    /* Make white on dark background */
+    /* Removed filter that was inverting the black background too */
+    border-radius: 8px;
+    /* Optional: adds subtle rounding */
     transition: transform 0.2s;
 }
 
